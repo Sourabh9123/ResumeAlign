@@ -12,7 +12,7 @@ class BaseLLMProvider(ABC):
 
 class OpenAIProvider(BaseLLMProvider):
     def __init__(self):
-        self.llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4o-mini")
+        self.llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model=settings.OPENAI_MODEL)
 
     async def generate(self, prompt: str) -> str:
         try:
@@ -24,7 +24,7 @@ class OpenAIProvider(BaseLLMProvider):
 
 class AnthropicProvider(BaseLLMProvider):
     def __init__(self):
-        self.llm = ChatAnthropic(api_key=settings.ANTHROPIC_API_KEY, model="claude-3-haiku-20240307")
+        self.llm = ChatAnthropic(api_key=settings.ANTHROPIC_API_KEY, model=settings.ANTHROPIC_MODEL)
         
     async def generate(self, prompt: str) -> str:
         try:

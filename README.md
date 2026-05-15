@@ -51,6 +51,12 @@ docker-compose exec backend alembic revision --autogenerate -m "Initial schema"
 docker-compose exec backend alembic upgrade head
 ```
 
+## CI/CD Pipeline
+
+This repository includes a GitHub Actions workflow (`.github/workflows/ci.yml`) to automatically lint and test both the backend and frontend code on every push or pull request to the `main` or `development` branches.
+
+Currently, the deployment step in the workflow is commented out. Once you have a server ready, you can uncomment it and configure your GitHub Secrets (`SERVER_HOST`, `SERVER_USER`, `SSH_PRIVATE_KEY`) to enable automated deployments.
+
 ## Disclaimer
 
 This is a comprehensive boilerplate for a scalable AI system built for ease of local development and solo maintainability.

@@ -1,50 +1,73 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-
-from app.api.deps import get_current_active_user
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
+from typing import Optional, Dict, Any
+from app.parsers.document_parser import DocumentParserFactory
+from app.graph.workflow import app as langgraph_app
 from app.core.logging import logger
+from app.api.deps import get_current_user
 from app.models.user import User
-from app.parsers.pdf import PDFTextExtractionError, XPDFParser
-
-"""Resume-related API endpoints."""
 
 router = APIRouter()
 
-
-@router.post("/extract-text")
+@router.post("/extract")
 async def extract_resume_text(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_active_user),
-):
-    """Extract text from an uploaded resume PDF using XPDF.
-
-    Requires a valid bearer token. The uploaded file must be a PDF and is read
-    into memory before being passed to the XPDF parser. The response includes
-    the original filename and extracted UTF-8 text so the frontend can preview
-    or send it into later optimization workflows.
-    """
-    if file.content_type != "application/pdf":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are supported",
-        )
-
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, str]:
+    """Extract raw text from an uploaded resume file."""
     try:
-        pdf_bytes = await file.read()
-        text = await XPDFParser.extract_text(pdf_bytes)
-        logger.info(f"Extracted PDF text for user {current_user.email}")
-        return {
-            "filename": file.filename,
-            "text": text,
+        parser = DocumentParserFactory.get_parser(file.filename, file.content_type)
+        text = await parser.extract_text(file)
+        if not text:
+            raise HTTPException(status_code=400, detail="Could not extract any text from the document.")
+        return {"filename": file.filename, "extracted_text": text}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to extract resume text", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error during text extraction.")
+
+@router.post("/optimize")
+async def optimize_resume(
+    resume_text: str = Form(...),
+    job_description: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Run the LangGraph workflow to parse and optionally optimize a resume."""
+    try:
+        # Initial state for the LangGraph workflow
+        initial_state = {
+            "user_id": str(current_user.id) if hasattr(current_user, "id") else "unknown",
+            "raw_resume_text": resume_text,
+            "jd_text": job_description or "",
+            "jd_keywords": [],
+            "structured_resume": {},
+            "optimized_resume": {},
+            "pdf_path": "",
+            "ats_score": 0.0,
+            "generated_latex": "",
+            "errors": []
         }
-    except PDFTextExtractionError as exc:
-        logger.warning(f"PDF text extraction failed for {file.filename}: {str(exc)}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        )
-    except Exception as exc:
-        logger.error(f"Unexpected PDF extraction error: {str(exc)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while extracting PDF text",
-        )
+        
+        logger.info(f"Starting workflow for user {current_user.email}")
+        
+        # Run the workflow
+        result = await langgraph_app.ainvoke(initial_state)
+        
+        # Calculate a basic ATS Score if JD is provided
+        ats_score = 0
+        jd_keywords = result.get("jd_keywords", [])
+        opt_resume_text = str(result.get("optimized_resume", {})).lower()
+        if jd_keywords:
+            matches = [kw for kw in jd_keywords if kw.lower() in opt_resume_text]
+            ats_score = int((len(matches) / len(jd_keywords)) * 100) if jd_keywords else 0
+
+        return {
+            "structured_resume": result.get("structured_resume"),
+            "optimized_resume": result.get("optimized_resume"),
+            "jd_keywords": jd_keywords,
+            "pdf_path": result.get("pdf_path"),
+            "ats_score": ats_score
+        }
+    except Exception as e:
+        logger.error("Failed to optimize resume", exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred while processing the resume. Please try again later.")

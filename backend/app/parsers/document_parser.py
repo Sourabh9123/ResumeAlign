@@ -65,12 +65,22 @@ class PDFParser(BaseParser):
         """Extract text using python's pdfplumber library."""
         def sync_extract():
             text_blocks = []
+            links = []
             with pdfplumber.open(io.BytesIO(content)) as pdf:
                 for page in pdf.pages:
                     page_text = page.extract_text(x_tolerance=2, y_tolerance=3)
                     if page_text:
                         text_blocks.append(page_text)
-            return "\n\n".join(text_blocks)
+                    if page.hyperlinks:
+                        for hl in page.hyperlinks:
+                            if "uri" in hl and hl["uri"]:
+                                links.append(hl["uri"])
+            
+            full_text = "\n\n".join(text_blocks)
+            if links:
+                unique_links = list(set(links))
+                full_text += "\n\n--- Extracted Hyperlinks ---\n" + "\n".join(unique_links)
+            return full_text
             
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, sync_extract)

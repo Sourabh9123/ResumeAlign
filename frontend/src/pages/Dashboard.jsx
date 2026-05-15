@@ -91,14 +91,25 @@ export default function Dashboard() {
                     <div className="bg-gray-800 p-8 rounded-3xl shadow-2xl border border-gray-700 animate-fade-in">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-2xl font-bold text-white">Optimization Results</h2>
-                            {results.ats_score > 0 && (
-                                <div className="bg-gray-900 px-4 py-2 rounded-full border border-gray-600">
-                                    <span className="text-sm text-gray-400 mr-2">ATS Score:</span>
-                                    <span className={`font-bold ${results.ats_score > 70 ? 'text-emerald-400' : 'text-yellow-400'}`}>
-                                        {results.ats_score}%
-                                    </span>
-                                </div>
-                            )}
+                            <div className="flex space-x-4 items-center">
+                                {results.ats_score > 0 && (
+                                    <div className="bg-gray-900 px-4 py-2 rounded-full border border-gray-600">
+                                        <span className="text-sm text-gray-400 mr-2">ATS Score:</span>
+                                        <span className={`font-bold ${results.ats_score > 70 ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                                            {results.ats_score}%
+                                        </span>
+                                    </div>
+                                )}
+                                {results.pdf_base64 && (
+                                    <a 
+                                        href={`data:application/pdf;base64,${results.pdf_base64}`}
+                                        download="Optimized_Resume.pdf"
+                                        className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg transition-transform transform hover:scale-105"
+                                    >
+                                        Download PDF
+                                    </a>
+                                )}
+                            </div>
                         </div>
 
                         {results.jd_keywords && results.jd_keywords.length > 0 && (

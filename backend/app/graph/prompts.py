@@ -12,7 +12,8 @@ The JSON should have the following structure:
     "name": "Full Name",
     "email": "Email Address",
     "phone": "Phone Number",
-    "location": "Location"
+    "location": "Location",
+    "links": ["https://linkedin.com/in/...", "https://github.com/..."]
   }},
   "summary": "Professional Summary",
   "experience": [

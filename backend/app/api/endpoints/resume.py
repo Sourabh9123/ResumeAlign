@@ -61,11 +61,21 @@ async def optimize_resume(
             matches = [kw for kw in jd_keywords if kw.lower() in opt_resume_text]
             ats_score = int((len(matches) / len(jd_keywords)) * 100) if jd_keywords else 0
 
+        import base64
+        import os
+        
+        pdf_base64 = ""
+        pdf_path = result.get("pdf_path")
+        if pdf_path and os.path.exists(pdf_path):
+            with open(pdf_path, "rb") as pdf_file:
+                pdf_base64 = base64.b64encode(pdf_file.read()).decode('utf-8')
+
         return {
             "structured_resume": result.get("structured_resume"),
             "optimized_resume": result.get("optimized_resume"),
             "jd_keywords": jd_keywords,
-            "pdf_path": result.get("pdf_path"),
+            "pdf_path": pdf_path,
+            "pdf_base64": pdf_base64,
             "ats_score": ats_score
         }
     except Exception as e:

@@ -10,6 +10,25 @@ class LatexGenerator:
         """Create a generator using the given Jinja-compatible LaTeX template."""
         self.template_path = template_path
 
+    def _escape_latex_dict(self, data, key=None):
+        if key == "links":
+            return data
+        if isinstance(data, dict):
+            return {k: self._escape_latex_dict(v, k) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._escape_latex_dict(v, key) for v in data]
+        elif isinstance(data, str):
+            latex_special_chars = {
+                '\\': r'\textbackslash{}', '&': r'\&', '%': r'\%',
+                '$': r'\$', '#': r'\#', '_': r'\_', '{': r'\{',
+                '}': r'\}', '~': r'\textasciitilde{}', '^': r'\textasciicircum{}',
+            }
+            res = ""
+            for char in data:
+                res += latex_special_chars.get(char, char)
+            return res
+        return data
+
     async def generate_pdf(self, resume_data: dict, output_dir: str, filename: str) -> str:
         """Render a resume template and compile it with `xelatex`.
 
@@ -18,11 +37,14 @@ class LatexGenerator:
         compiler output or filesystem details.
         """
         try:
+            # Escape LaTeX special characters
+            safe_resume_data = self._escape_latex_dict(resume_data)
+
             with open(self.template_path, 'r') as f:
                 template_content = f.read()
             
             template = Template(template_content)
-            latex_code = template.render(resume=resume_data)
+            latex_code = template.render(resume=safe_resume_data)
             
             tex_file_path = os.path.join(output_dir, f"{filename}.tex")
             pdf_file_path = os.path.join(output_dir, f"{filename}.pdf")
@@ -41,9 +63,10 @@ class LatexGenerator:
             stdout, stderr = await process.communicate()
             
             if process.returncode != 0:
-                error_msg = f"LaTeX compilation failed: {stderr.decode()}"
+                stdout_text = stdout.decode()
+                error_msg = f"LaTeX compilation failed. Stderr: {stderr.decode()} | Stdout snippet: {stdout_text[-1000:]}"
                 logger.error(error_msg)
-                raise Exception(error_msg)
+                raise Exception("LaTeX compilation failed")
                 
             logger.info(f"Successfully generated PDF at {pdf_file_path}")
             return pdf_file_path

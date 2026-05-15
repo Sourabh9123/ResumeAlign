@@ -6,6 +6,8 @@ from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 class Resume(Base):
+    """Canonical resume record owned by a user."""
+
     __tablename__ = "resumes"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -18,6 +20,8 @@ class Resume(Base):
     versions = relationship("ResumeVersion", back_populates="resume")
 
 class ResumeVersion(Base):
+    """Immutable snapshot of resume structured data at a point in time."""
+
     __tablename__ = "resume_versions"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     resume_id = Column(UUID(as_uuid=True), ForeignKey("resumes.id"), nullable=False)
@@ -28,6 +32,8 @@ class ResumeVersion(Base):
     resume = relationship("Resume", back_populates="versions")
 
 class JobDescription(Base):
+    """Job description text and parsed keyword metadata for a user."""
+
     __tablename__ = "job_descriptions"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -38,6 +44,8 @@ class JobDescription(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class OptimizationHistory(Base):
+    """Audit record for a resume optimization run."""
+
     __tablename__ = "optimization_history"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

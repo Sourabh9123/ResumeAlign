@@ -18,7 +18,12 @@ docs_security = HTTPBasic()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize application resources before serving requests."""
+    """Initialize and clean up application-level resources.
+
+    Database tables are created on startup for this development-oriented setup.
+    In a production migration flow, this block should be replaced by Alembic
+    migrations that run outside the web process.
+    """
     try:
         logger.info("Starting up API and Initializing Database tables")
         async with engine.begin() as conn:
@@ -72,7 +77,12 @@ def verify_docs_credentials(
 
 @app.get("/docs", include_in_schema=False)
 async def protected_swagger_ui(username: str = Depends(verify_docs_credentials)):
-    """Serve Swagger UI only after successful basic authentication."""
+    """Serve the Swagger UI page after documentation authentication.
+
+    This route replaces FastAPI's default `/docs` route so the documentation UI
+    is not publicly reachable. Users must provide the configured docs username
+    and password via HTTP Basic authentication.
+    """
     logger.info(f"API documentation accessed by {username}")
     return get_swagger_ui_html(
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
@@ -82,7 +92,7 @@ async def protected_swagger_ui(username: str = Depends(verify_docs_credentials))
 
 @app.get(f"{settings.API_V1_STR}/openapi.json", include_in_schema=False)
 async def protected_openapi_schema(username: str = Depends(verify_docs_credentials)):
-    """Serve the OpenAPI schema only after successful basic authentication."""
+    """Serve the OpenAPI JSON schema after documentation authentication."""
     logger.info(f"OpenAPI schema accessed by {username}")
     return get_openapi(
         title=settings.PROJECT_NAME,
@@ -92,13 +102,22 @@ async def protected_openapi_schema(username: str = Depends(verify_docs_credentia
 
 @app.get("/health")
 async def health_check():
+    """Return a lightweight health response for uptime checks."""
     return {"status": "ok"}
 
 class PromptRequest(BaseModel):
+    """Request body for testing the configured AI provider."""
+
     prompt: str
 
 @app.post(f"{settings.API_V1_STR}/test-ai")
 async def test_ai(request: PromptRequest):
+    """Generate a test response from the configured AI provider.
+
+    This utility endpoint is meant for development verification of API keys,
+    model configuration, and provider connectivity. It returns a `400` response
+    for provider configuration problems and `502` for upstream provider errors.
+    """
     try:
         provider = LLMProviderFactory.create(settings.DEFAULT_AI_PROVIDER)
         response = await provider.generate(request.prompt)

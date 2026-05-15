@@ -4,10 +4,19 @@ from jinja2 import Template
 from app.core.logging import logger
 
 class LatexGenerator:
+    """Render resume data into LaTeX and compile it to PDF."""
+
     def __init__(self, template_path: str = "app/latex/templates/default.tex"):
+        """Create a generator using the given Jinja-compatible LaTeX template."""
         self.template_path = template_path
 
     async def generate_pdf(self, resume_data: dict, output_dir: str, filename: str) -> str:
+        """Render a resume template and compile it with `xelatex`.
+
+        Returns the generated PDF path. Raises a generic generation exception
+        after logging the original failure so API callers do not receive raw
+        compiler output or filesystem details.
+        """
         try:
             with open(self.template_path, 'r') as f:
                 template_content = f.read()

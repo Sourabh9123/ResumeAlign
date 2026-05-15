@@ -1,6 +1,8 @@
 from typing import TypedDict, List, Dict, Any, Optional
 
 class ResumeGraphState(TypedDict):
+    """Shared state passed between LangGraph resume workflow nodes."""
+
     user_id: str
     raw_resume_text: str
     structured_resume: Dict[str, Any]

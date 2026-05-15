@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-ARG XPDF_VERSION=4.05
+ARG XPDF_VERSION=4.06
 
 # Install system dependencies for OCR and LaTeX
 RUN apt-get update && apt-get install -y \
@@ -18,7 +18,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install official XPDF command-line binaries (pdftotext, pdfinfo, pdftoppm, etc.).
-RUN wget -q "https://dl.xpdfreader.com/xpdf-tools-linux-${XPDF_VERSION}.tar.gz" -O /tmp/xpdf-tools.tar.gz \
+RUN wget "https://dl.xpdfreader.com/xpdf-tools-linux-${XPDF_VERSION}.tar.gz" -O /tmp/xpdf-tools.tar.gz \
+    && test -s /tmp/xpdf-tools.tar.gz \
     && tar -xzf /tmp/xpdf-tools.tar.gz -C /tmp \
     && cp /tmp/xpdf-tools-linux-${XPDF_VERSION}/bin64/* /usr/local/bin/ \
     && chmod +x /usr/local/bin/pdf* \

@@ -4,6 +4,13 @@ from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables.
+
+    Pydantic reads values from the process environment and `.env` file. Defaults
+    are kept development-friendly, while secrets and deployment-specific values
+    can be overridden without changing application code.
+    """
+
     PROJECT_NAME: str = "AI Resume Builder"
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str
@@ -30,12 +37,14 @@ class Settings(BaseSettings):
     DEFAULT_AI_PROVIDER: str = "openai"
     OPENAI_MODEL: str = "gpt-4o-mini"
     ANTHROPIC_MODEL: str = "claude-3-haiku-20240307"
+    XPDF_PDFTOTEXT_BINARY: str = "pdftotext"
+    XPDF_PDFTOTEXT_TIMEOUT_SECONDS: int = 30
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property
     def DATABASE_URI(self) -> str:
-        """Build the async PostgreSQL URL from individual database settings."""
+        """Build the async SQLAlchemy PostgreSQL URL from individual settings."""
         password = quote_plus(self.POSTGRES_PASSWORD)
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{password}"

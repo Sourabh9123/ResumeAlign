@@ -1,5 +1,7 @@
 import structlog
 
+"""Structured logging configuration shared by the backend application."""
+
 structlog.configure(
     processors=[
         structlog.stdlib.add_logger_name,

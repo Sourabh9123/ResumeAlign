@@ -1,8 +1,6 @@
-from typing import Any, Dict, Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import OAuth2PasswordRequestForm
-from app.api import deps
 from app.core import security
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.token import Token
@@ -10,7 +8,6 @@ from app.db.database import get_db
 from sqlalchemy.future import select
 from app.models.user import User
 from app.core.logging import logger
-import uuid
 
 router = APIRouter()
 
@@ -35,8 +32,10 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
         logger.info(f"User {user_in.email} registered successfully")
         return user
     except HTTPException:
+        await db.rollback()
         raise
     except Exception as e:
+        await db.rollback()
         logger.error(f"Error during registration: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error during registration")
 
@@ -59,7 +58,9 @@ async def login(db: AsyncSession = Depends(get_db), form_data: OAuth2PasswordReq
             "token_type": "bearer",
         }
     except HTTPException:
+        await db.rollback()
         raise
     except Exception as e:
+        await db.rollback()
         logger.error(f"Error during login: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error during login")

@@ -1,9 +1,12 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Float, Text
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+
+from sqlalchemy import Column, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
+
 from app.db.database import Base
+
 
 class Resume(Base):
     """Canonical resume record owned by a user."""
@@ -17,8 +20,9 @@ class Resume(Base):
     structured_data = Column(JSONB)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     versions = relationship("ResumeVersion", back_populates="resume")
+
 
 class ResumeVersion(Base):
     """Immutable snapshot of resume structured data at a point in time."""
@@ -29,8 +33,9 @@ class ResumeVersion(Base):
     structured_data = Column(JSONB)
     version_number = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     resume = relationship("Resume", back_populates="versions")
+
 
 class JobDescription(Base):
     """Job description text and parsed keyword metadata for a user."""
@@ -44,6 +49,7 @@ class JobDescription(Base):
     raw_text = Column(Text)
     parsed_keywords = Column(JSONB)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class OptimizationHistory(Base):
     """Audit record for a resume optimization run."""

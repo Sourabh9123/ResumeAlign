@@ -1,6 +1,8 @@
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
+
+from app.graph.nodes import analyze_jd, generate_pdf, optimize_resume, parse_resume
 from app.graph.state import ResumeGraphState
-from app.graph.nodes import parse_resume, analyze_jd, optimize_resume, generate_pdf
+
 
 def build_graph():
     """Build and compile the LangGraph resume optimization workflow."""
@@ -21,12 +23,15 @@ def build_graph():
         return workflow.compile()
     except Exception as e:
         from app.core.logging import logger
+
         logger.error(f"Failed to build or compile LangGraph workflow: {str(e)}", exc_info=True)
         raise
+
 
 try:
     app = build_graph()
 except Exception as e:
     from app.core.logging import logger
+
     logger.critical(f"Critical error initializing application graph: {str(e)}")
     raise

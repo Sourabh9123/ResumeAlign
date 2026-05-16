@@ -50,7 +50,7 @@ The JSON MUST have the following structure:
 
 Raw Resume Text:
 {raw_text}
-"""
+""",
 )
 
 ANALYZE_JD_PROMPT = PromptTemplate(
@@ -74,7 +74,7 @@ The JSON MUST have the following structure:
 
 Job Description:
 {jd_text}
-"""
+""",
 )
 
 OPTIMIZE_RESUME_PROMPT = PromptTemplate(
@@ -100,7 +100,7 @@ Job Description Analysis:
 
 Original Structured Resume:
 {structured_resume}
-"""
+""",
 )
 
 LATEX_GENERATOR_PROMPT = PromptTemplate(
@@ -122,5 +122,5 @@ Layout & Design Rules:
 
 Resume Data:
 {resume_data}
-"""
+""",
 )

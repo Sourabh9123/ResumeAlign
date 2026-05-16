@@ -1,8 +1,11 @@
 import asyncio
+import io
+
 import pytesseract
 from PIL import Image
-import io
+
 from app.core.logging import logger
+
 
 class OCRPipeline:
     """OCR helper for extracting text from image bytes with Tesseract."""

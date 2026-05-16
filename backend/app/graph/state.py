@@ -1,9 +1,11 @@
-from typing import TypedDict, List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional, TypedDict
+
 
 class ResumeGraphState(TypedDict):
     """Shared state passed between LangGraph resume workflow nodes."""
 
     user_id: str
+    resume_filename: Optional[str]
     raw_resume_text: str
     structured_resume: Dict[str, Any]
     jd_text: str

@@ -1,0 +1,27 @@
+[tool.black]
+line-length = 150
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.git
+  | \.mypy_cache
+  | \.pytest_cache
+  | \.ruff_cache
+  | __pycache__
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 150
+py_version = 311
+src_paths = ["backend/app", "backend/alembic"]
+skip_gitignore = true
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "backend"
+explicit_package_bases = true
+ignore_missing_imports = true
+disable_error_code = ["import-untyped"]

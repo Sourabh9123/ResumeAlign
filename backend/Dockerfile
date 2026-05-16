@@ -5,6 +5,19 @@ WORKDIR /app
 ARG XPDF_VERSION=4.06
 
 # Install system dependencies for OCR and LaTeX
+# RUN apt-get update && apt-get install -y \
+#     ca-certificates \
+#     tesseract-ocr \
+#     tesseract-ocr-eng \
+#     libgl1 \
+#     libglib2.0-0 \
+#     texlive-xetex \
+#     texlive-fonts-recommended \
+#     texlive-fonts-extra \
+#     wget \
+#     && rm -rf /var/lib/apt/lists/*
+
+# small deps
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     tesseract-ocr \
@@ -13,7 +26,6 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     texlive-xetex \
     texlive-fonts-recommended \
-    texlive-fonts-extra \
     wget \
     && rm -rf /var/lib/apt/lists/*
 

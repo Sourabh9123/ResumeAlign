@@ -205,7 +205,7 @@ export default function Dashboard() {
                                     {results.pdf_base64 && (
                                         <a 
                                             href={`data:application/pdf;base64,${results.pdf_base64}`}
-                                            download="Optimized_Resume.pdf"
+                                            download={`Optimized_Resume_${new Date().getTime()}.pdf`}
                                             className="group flex items-center bg-white text-black px-8 py-3.5 rounded-2xl text-sm font-bold shadow-[0_0_30px_rgba(255,255,255,0.15)] transition-all hover:scale-105 hover:bg-gray-100"
                                         >
                                             <svg className="w-5 h-5 mr-2 group-hover:-translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>

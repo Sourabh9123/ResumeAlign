@@ -63,6 +63,8 @@ class AuthService:
     async def get_user_from_token(self, token: str) -> User:
         """Decode an access token and load the referenced user."""
         token_data = self.decode_token(token)
+        if token_data.sub is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
         user = await self.users.get_by_id(token_data.sub)
         if not user:
             logger.warning(f"Authenticated token references missing user: {token_data.sub}")

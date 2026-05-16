@@ -3,24 +3,27 @@ import io
 import tempfile
 from abc import ABC, abstractmethod
 from typing import Optional
+
+import docx
+import pdfplumber
 from fastapi import UploadFile
 
-import pdfplumber
-import docx
 from app.core.logging import logger
 from app.ocr.pipeline import OCRPipeline
 
+
 class BaseParser(ABC):
     """Abstract base class for all document parsers."""
-    
+
     @abstractmethod
     async def extract_text(self, file: UploadFile) -> str:
         """Extract text from the given uploaded file."""
         pass
 
+
 class TextParser(BaseParser):
     """Parser for plain text files."""
-    
+
     async def extract_text(self, file: UploadFile) -> str:
         try:
             content = await file.read()
@@ -36,14 +39,15 @@ class TextParser(BaseParser):
         finally:
             await file.seek(0)
 
+
 class PDFParser(BaseParser):
     """Parser for PDF files using pdfplumber with a pdftotext (poppler) fallback."""
-    
+
     async def extract_text(self, file: UploadFile) -> str:
         try:
             content = await file.read()
             text = await self._extract_with_pdfplumber(content)
-            
+
             # If pdfplumber extracted too little text, it might be an image-based PDF or poorly formatted.
             # We can fallback to pdftotext here if we want, but pdfplumber is usually very good.
             # If it's completely empty, we might need to OCR the PDF (not implemented in this step).
@@ -63,6 +67,7 @@ class PDFParser(BaseParser):
 
     async def _extract_with_pdfplumber(self, content: bytes) -> str:
         """Extract text using python's pdfplumber library."""
+
         def sync_extract():
             text_blocks = []
             links = []
@@ -75,13 +80,13 @@ class PDFParser(BaseParser):
                         for hl in page.hyperlinks:
                             if "uri" in hl and hl["uri"]:
                                 links.append(hl["uri"])
-            
+
             full_text = "\n\n".join(text_blocks)
             if links:
                 unique_links = list(set(links))
                 full_text += "\n\n--- Extracted Hyperlinks ---\n" + "\n".join(unique_links)
             return full_text
-            
+
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, sync_extract)
 
@@ -90,37 +95,38 @@ class PDFParser(BaseParser):
         with tempfile.NamedTemporaryFile(suffix=".pdf") as temp_pdf:
             temp_pdf.write(content)
             temp_pdf.flush()
-            
+
             process = await asyncio.create_subprocess_exec(
                 "pdftotext",
-                "-layout", # preserve layout
+                "-layout",  # preserve layout
                 temp_pdf.name,
-                "-",       # output to stdout
+                "-",  # output to stdout
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await process.communicate()
-            
+
             if process.returncode != 0:
                 logger.warning(f"pdftotext fallback failed: {stderr.decode()}")
                 return ""
-            
+
             return stdout.decode("utf-8", errors="ignore")
+
 
 class DocxParser(BaseParser):
     """Parser for Microsoft Word (.docx) files."""
-    
+
     async def extract_text(self, file: UploadFile) -> str:
         try:
             content = await file.read()
-            
+
             def sync_extract():
                 doc = docx.Document(io.BytesIO(content))
                 return "\n".join([para.text for para in doc.paragraphs])
-                
+
             loop = asyncio.get_event_loop()
             text = await loop.run_in_executor(None, sync_extract)
-            
+
             logger.info("Successfully extracted text from DOCX file")
             return text.strip()
         except Exception as e:
@@ -129,9 +135,10 @@ class DocxParser(BaseParser):
         finally:
             await file.seek(0)
 
+
 class ImageParser(BaseParser):
     """Parser for Image files using the OCR pipeline."""
-    
+
     async def extract_text(self, file: UploadFile) -> str:
         try:
             content = await file.read()
@@ -144,13 +151,14 @@ class ImageParser(BaseParser):
         finally:
             await file.seek(0)
 
+
 class DocumentParserFactory:
     """Factory to return the appropriate parser based on file type."""
-    
+
     @staticmethod
     def get_parser(filename: str, content_type: Optional[str] = None) -> BaseParser:
         filename_lower = filename.lower()
-        
+
         if filename_lower.endswith(".pdf") or content_type == "application/pdf":
             return PDFParser()
         elif filename_lower.endswith(".docx") or content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
@@ -161,4 +169,4 @@ class DocumentParserFactory:
             return ImageParser()
         else:
             logger.warning(f"Unsupported file format requested: {filename} ({content_type})")
-            raise ValueError(f"Unsupported file format for document parsing. Supported formats: PDF, DOCX, TXT, PNG/JPG.")
+            raise ValueError("Unsupported file format for document parsing. Supported formats: PDF, DOCX, TXT, PNG/JPG.")

@@ -3,21 +3,22 @@ import os
 import re
 import secrets
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.parsers.document_parser import DocumentParserFactory
-from app.graph.workflow import app as langgraph_app
+from app.api.deps import enforce_general_rate_limit, enforce_llm_rate_limit
 from app.core.logging import logger
-from app.api.deps import enforce_general_rate_limit, enforce_llm_rate_limit, get_current_user
 from app.db.database import get_db
+from app.graph.state import ResumeGraphState
+from app.graph.workflow import app as langgraph_app
 from app.models.resume import JobDescription, OptimizationHistory, Resume, ResumeVersion
 from app.models.user import User
+from app.parsers.document_parser import DocumentParserFactory
 from app.services.s3_service import S3PresignedUrlService
 
 router = APIRouter()
@@ -37,13 +38,30 @@ async def _create_download_token(db: AsyncSession) -> str:
     """
     for _ in range(8):
         token = secrets.token_urlsafe(8)
-        existing = await db.scalar(
-            select(OptimizationHistory.id).where(OptimizationHistory.download_token == token)
-        )
+        existing = await db.scalar(select(OptimizationHistory.id).where(OptimizationHistory.download_token == token))
         if not existing:
             return token
 
     raise RuntimeError("Could not create a unique resume download token.")
+
+
+def _safe_download_filename(prefix: Optional[str], unique_value: str) -> str:
+    """Build a browser download filename from a resume title and unique token."""
+    cleaned_prefix = re.sub(r"[^A-Za-z0-9]+", "-", prefix or "").strip("-").lower()
+    if cleaned_prefix.endswith("-optimized"):
+        cleaned_prefix = cleaned_prefix[: -len("-optimized")]
+    cleaned_prefix = cleaned_prefix[:80].strip("-") or "resume"
+    cleaned_unique = re.sub(r"[^A-Za-z0-9]+", "", unique_value)[:16] or secrets.token_hex(6)
+    return f"{cleaned_prefix}-optimized-{cleaned_unique}.pdf"
+
+
+async def _history_download_filename(history: OptimizationHistory, db: AsyncSession) -> str:
+    """Resolve the intended user-facing PDF filename for a saved history item."""
+    resume_title = None
+    if history.resume_id:
+        resume_title = await db.scalar(select(Resume.title).where(Resume.id == history.resume_id))
+    unique_value = history.download_token or str(history.id)
+    return _safe_download_filename(resume_title, unique_value)
 
 
 def _build_jd_title(job_description: Optional[str], job_description_url: Optional[str]) -> str:
@@ -63,7 +81,7 @@ def _build_jd_title(job_description: Optional[str], job_description_url: Optiona
         return "No job description"
 
     first_line = next((line.strip() for line in job_description.splitlines() if line.strip()), "")
-    return (first_line[:80] or "Pasted job description")
+    return first_line[:80] or "Pasted job description"
 
 
 def _clean_jd_field(value: Any) -> Optional[str]:
@@ -104,7 +122,12 @@ def _format_jd_display(title: Optional[str], company: Optional[str]) -> tuple[st
         display_company = _clean_jd_field(right)
 
     display_title = re.sub(r"^[^\w]+", "", display_title).strip()
-    display_title = re.sub(r"^(we\s+are\s+)?(hiring|job opening|opening|role)\s*:\s*", "", display_title, flags=re.I).strip()
+    display_title = re.sub(
+        r"^(we\s+are\s+)?(hiring|job opening|opening|role)\s*:\s*",
+        "",
+        display_title,
+        flags=re.I,
+    ).strip()
 
     return display_title or "No job description", display_company
 
@@ -127,9 +150,7 @@ def _serialize_history_item(
     download_url = None
     if history.download_token:
         download_url = f"/resume/d/{history.download_token}"
-    elif (
-        history.generated_pdf_path or history.generated_pdf_url or history.generated_pdf_s3_key
-    ):
+    elif history.generated_pdf_path or history.generated_pdf_url or history.generated_pdf_s3_key:
         download_url = f"/resume/history/{history.id}/pdf"
 
     jd_title, jd_company = _format_jd_display(jd.title if jd else None, jd.company if jd else None)
@@ -148,10 +169,11 @@ def _serialize_history_item(
         "created_at": history.created_at.isoformat() if history.created_at else None,
     }
 
+
 @router.post("/extract")
 async def extract_resume_text(
     file: UploadFile = File(...),
-    current_user: User = Depends(enforce_general_rate_limit)
+    current_user: User = Depends(enforce_general_rate_limit),
 ) -> Dict[str, str]:
     """Extract raw text from an uploaded resume file.
 
@@ -173,9 +195,10 @@ async def extract_resume_text(
         return {"filename": file.filename, "extracted_text": text}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.error("Failed to extract resume text", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error during text extraction.")
+
 
 @router.post("/optimize")
 async def optimize_resume(
@@ -206,8 +229,9 @@ async def optimize_resume(
     """
     try:
         # Initial state for the LangGraph workflow
-        initial_state = {
-            "user_id": str(current_user.id) if hasattr(current_user, "id") else "unknown",
+        initial_state: ResumeGraphState = {
+            "user_id": (str(current_user.id) if hasattr(current_user, "id") else "unknown"),
+            "resume_filename": resume_filename,
             "raw_resume_text": resume_text,
             "jd_text": job_description or "",
             "additional_prompt": additional_prompt or "",
@@ -220,14 +244,14 @@ async def optimize_resume(
             "pdf_s3_key": None,
             "ats_score": 0.0,
             "generated_latex": "",
-            "errors": []
+            "errors": [],
         }
-        
+
         logger.info(f"Starting workflow for user {current_user.email}")
-        
+
         # Run the workflow
         result = await langgraph_app.ainvoke(initial_state)
-        
+
         # Calculate a basic ATS Score if JD is provided
         ats_score = 0
         jd_keywords = result.get("jd_keywords", [])
@@ -239,14 +263,14 @@ async def optimize_resume(
 
         pdf_base64 = ""
         pdf_path = result.get("pdf_path")
-        pdf_s3_url = result.get("pdf_s3_url")
         pdf_s3_key = result.get("pdf_s3_key")
-        
+
         if pdf_path and os.path.exists(pdf_path) and not pdf_s3_key:
             with open(pdf_path, "rb") as pdf_file:
-                pdf_base64 = base64.b64encode(pdf_file.read()).decode('utf-8')
+                pdf_base64 = base64.b64encode(pdf_file.read()).decode("utf-8")
 
-        resume_title = Path(resume_filename).stem if resume_filename else "Optimized Resume"
+        resume_title_prefix = Path(resume_filename).stem.strip() if resume_filename else "resume"
+        resume_title = f"{resume_title_prefix} optimized"
         download_token = await _create_download_token(db)
         resume_url = f"/resume/d/{download_token}" if (pdf_path or pdf_s3_key) else None
         resume = Resume(
@@ -307,17 +331,20 @@ async def optimize_resume(
             "pdf_path": pdf_path,
             "pdf_base64": pdf_base64,
             "pdf_s3_url": None,
-            "download_url": f"/resume/d/{history.download_token}" if history.download_token and (pdf_path or pdf_s3_key) else None,
+            "download_url": (f"/resume/d/{history.download_token}" if history.download_token and (pdf_path or pdf_s3_key) else None),
             "resume_url": resume_url,
             "jd_title": jd.title if jd else "No job description",
             "jd_company": jd.company if jd else None,
             "jd_source_url": jd.source_url if jd else None,
-            "ats_score": ats_score
+            "ats_score": ats_score,
         }
-    except Exception as e:
+    except Exception:
         await db.rollback()
         logger.error("Failed to optimize resume", exc_info=True)
-        raise HTTPException(status_code=500, detail="An internal error occurred while processing the resume. Please try again later.")
+        raise HTTPException(
+            status_code=500,
+            detail="An internal error occurred while processing the resume. Please try again later.",
+        )
 
 
 @router.get("/history")
@@ -407,13 +434,11 @@ async def download_resume_by_token(
     Raises:
         HTTPException: 404 when the token is unknown or the PDF cannot be read.
     """
-    history = await db.scalar(
-        select(OptimizationHistory).where(OptimizationHistory.download_token == download_token)
-    )
+    history = await db.scalar(select(OptimizationHistory).where(OptimizationHistory.download_token == download_token))
     if not history:
         raise HTTPException(status_code=404, detail="Resume download link not found.")
 
-    return await _open_history_pdf(history)
+    return await _open_history_pdf(history, db)
 
 
 @router.get("/history/{optimization_id}/pdf")
@@ -455,10 +480,10 @@ async def get_history_pdf(
     if not history:
         raise HTTPException(status_code=404, detail="Resume history item not found.")
 
-    return await _open_history_pdf(history)
+    return await _open_history_pdf(history, db)
 
 
-async def _open_history_pdf(history: OptimizationHistory):
+async def _open_history_pdf(history: OptimizationHistory, db: AsyncSession):
     """Open one generated resume from S3 or local disk.
 
     Args:
@@ -470,10 +495,11 @@ async def _open_history_pdf(history: OptimizationHistory):
     Raises:
         HTTPException: 404 when no readable generated resume exists.
     """
+    download_filename = await _history_download_filename(history, db)
     presigned_urls = S3PresignedUrlService()
     s3_key = history.generated_pdf_s3_key or presigned_urls.object_key_from_url(history.generated_pdf_url)
     if s3_key:
-        signed_url = await presigned_urls.generate_presigned_url(s3_key, expiration=3600)
+        signed_url = await presigned_urls.generate_presigned_url(s3_key, expiration=3600, download_filename=download_filename)
         if signed_url:
             return RedirectResponse(signed_url)
 
@@ -483,7 +509,7 @@ async def _open_history_pdf(history: OptimizationHistory):
         return FileResponse(
             history.generated_pdf_path,
             media_type="application/pdf",
-            filename=os.path.basename(history.generated_pdf_path),
+            filename=download_filename,
         )
 
     raise HTTPException(status_code=404, detail="Generated resume PDF is no longer available.")

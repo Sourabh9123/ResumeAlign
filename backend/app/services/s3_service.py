@@ -30,12 +30,7 @@ class S3ClientFactory:
 
     def is_configured(self) -> bool:
         """Return whether the minimum S3 settings are present."""
-        return bool(
-            self.bucket_name
-            and settings.AWS_ACCESS_KEY_ID
-            and settings.AWS_SECRET_ACCESS_KEY
-            and settings.AWS_REGION
-        )
+        return bool(self.bucket_name and settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY and settings.AWS_REGION)
 
     def client(self):
         """Return an async context manager for an S3 client."""
@@ -85,12 +80,13 @@ class S3PresignedUrlService:
         self.client_factory = client_factory or S3ClientFactory()
         self.bucket_name = self.client_factory.bucket_name
 
-    async def generate_presigned_url(self, object_name: str, expiration: int = 3600) -> Optional[str]:
+    async def generate_presigned_url(self, object_name: str, expiration: int = 3600, download_filename: Optional[str] = None) -> Optional[str]:
         """Generate a fresh presigned GET URL for an S3 object key.
 
         Args:
             object_name: S3 object key to sign.
             expiration: Number of seconds the URL should remain valid.
+            download_filename: Optional filename browsers should use when saving.
 
         Returns:
             A presigned URL string, or None when S3 is not configured or signing fails.
@@ -101,9 +97,12 @@ class S3PresignedUrlService:
 
         try:
             async with self.client_factory.client() as s3_client:
+                params = {"Bucket": self.bucket_name, "Key": object_name}
+                if download_filename:
+                    params["ResponseContentDisposition"] = f'attachment; filename="{download_filename}"'
                 response = await s3_client.generate_presigned_url(
                     "get_object",
-                    Params={"Bucket": self.bucket_name, "Key": object_name},
+                    Params=params,
                     ExpiresIn=expiration,
                 )
                 return response
@@ -139,7 +138,7 @@ class S3PresignedUrlService:
 
         bucket_prefix = f"{self.bucket_name}/"
         if path.startswith(bucket_prefix):
-            return unquote(path[len(bucket_prefix):])
+            return unquote(path[len(bucket_prefix) :])
 
         return unquote(path)
 
@@ -196,9 +195,9 @@ class S3Service:
         """Upload a local file to S3 using the storage service."""
         return await self.storage.upload_file(file_path, object_name)
 
-    async def generate_presigned_url(self, object_name: str, expiration: int = 3600) -> Optional[str]:
+    async def generate_presigned_url(self, object_name: str, expiration: int = 3600, download_filename: Optional[str] = None) -> Optional[str]:
         """Generate a short-lived GET URL for an S3 object key."""
-        return await self.presigned_urls.generate_presigned_url(object_name, expiration)
+        return await self.presigned_urls.generate_presigned_url(object_name, expiration, download_filename)
 
     def object_key_from_url(self, url: Optional[str]) -> Optional[str]:
         """Extract an object key from an S3 URL for legacy saved records."""

@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from app.api.endpoints import auth, resume
 
 """Top-level API router registration for versioned backend endpoints."""

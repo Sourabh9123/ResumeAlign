@@ -13,11 +13,6 @@ function App() {
   const [authMessage, setAuthMessage] = useState('')
   const [isAuthLoading, setIsAuthLoading] = useState(false)
   const [isSessionLoading, setIsSessionLoading] = useState(Boolean(token))
-  const [resumeFile, setResumeFile] = useState(null)
-  const [jobDescription, setJobDescription] = useState('')
-  const [extractedText, setExtractedText] = useState('')
-  const [resumeError, setResumeError] = useState('')
-  const [isExtracting, setIsExtracting] = useState(false)
 
   useEffect(() => {
     if (!token) {
@@ -106,47 +101,7 @@ function App() {
     localStorage.removeItem(TOKEN_STORAGE_KEY)
     setToken(null)
     setUser(null)
-    setResumeFile(null)
-    setJobDescription('')
-    setExtractedText('')
-    setResumeError('')
     setAuthMessage('')
-  }
-
-  async function handleExtractText(event) {
-    event.preventDefault()
-    setResumeError('')
-    setExtractedText('')
-
-    if (!resumeFile) {
-      setResumeError('Please select a PDF resume.')
-      return
-    }
-
-    setIsExtracting(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', resumeFile)
-
-      const response = await fetch(`${API_BASE_URL}/resume/extract-text`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      })
-
-      if (!response.ok) {
-        throw new Error(await getErrorMessage(response))
-      }
-
-      const result = await response.json()
-      setExtractedText(result.text)
-    } catch (error) {
-      setResumeError(error.message)
-    } finally {
-      setIsExtracting(false)
-    }
   }
 
   if (isSessionLoading) {

@@ -6,13 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from app.core.config import settings
+from pydantic import BaseModel
+
 from app.api.api import api_router
+from app.core.config import settings
 from app.core.logging import logger
-from app.db.database import engine, Base
+from app.db.database import Base, engine
 from app.services.llm_factory import LLMProviderFactory
 from app.services.rate_limiter import RateLimitPolicy, rate_limiter
-from pydantic import BaseModel
 
 docs_security = HTTPBasic()
 
@@ -101,15 +102,18 @@ async def protected_openapi_schema(username: str = Depends(verify_docs_credentia
         routes=app.routes,
     )
 
+
 @app.get("/health")
 async def health_check():
     """Return a lightweight health response for uptime checks."""
     return {"status": "ok"}
 
+
 class PromptRequest(BaseModel):
     """Request body for testing the configured AI provider."""
 
     prompt: str
+
 
 @app.post(f"{settings.API_V1_STR}/test-ai")
 async def test_ai(request: Request, prompt_request: PromptRequest):

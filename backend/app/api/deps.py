@@ -1,19 +1,17 @@
-from fastapi import Depends, HTTPException, status
-from fastapi import Request
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
-from app.models.user import User
-from app.db.database import get_db
 from app.core.logging import logger
+from app.db.database import get_db
+from app.models.user import User
 from app.services.auth import AuthService
 from app.services.rate_limiter import RateLimitPolicy, rate_limiter
 
 """Reusable FastAPI dependencies for authentication and service wiring."""
 
-reusable_oauth2 = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/auth/login"
-)
+reusable_oauth2 = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
 
 
 def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:

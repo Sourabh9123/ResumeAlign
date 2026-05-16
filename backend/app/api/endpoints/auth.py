@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
+
 from app.api.deps import enforce_auth_rate_limit, get_auth_service, get_current_active_user
-from app.schemas.user import UserCreate, UserResponse
-from app.schemas.token import Token
-from app.models.user import User
 from app.core.logging import logger
+from app.models.user import User
+from app.schemas.token import Token
+from app.schemas.user import UserCreate, UserResponse
 from app.services.auth import AuthService
 
 """Authentication endpoints for account registration, login, and session lookup."""

@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
-from langchain_openai import ChatOpenAI
+from typing import Optional
+
 from langchain_anthropic import ChatAnthropic
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
+
 from app.core.config import settings
 from app.core.logging import logger
+
 
 class BaseLLMProvider(ABC):
     """Common interface implemented by all LLM providers."""
@@ -12,6 +15,7 @@ class BaseLLMProvider(ABC):
     async def generate(self, prompt: str) -> str:
         """Generate text for a prompt using the concrete provider."""
         pass
+
 
 class OpenAIProvider(BaseLLMProvider):
     """LLM provider implementation backed by OpenAI chat models."""
@@ -29,13 +33,14 @@ class OpenAIProvider(BaseLLMProvider):
             logger.error(f"OpenAI generation failed: {str(e)}", exc_info=True)
             raise Exception("AI generation failed with OpenAI")
 
+
 class AnthropicProvider(BaseLLMProvider):
     """LLM provider implementation backed by Anthropic chat models."""
 
     def __init__(self):
         """Initialize the Anthropic chat client from application settings."""
         self.llm = ChatAnthropic(api_key=settings.ANTHROPIC_API_KEY, model=settings.ANTHROPIC_MODEL)
-        
+
     async def generate(self, prompt: str) -> str:
         """Generate a response from the configured Anthropic model."""
         try:
@@ -45,11 +50,12 @@ class AnthropicProvider(BaseLLMProvider):
             logger.error(f"Anthropic generation failed: {str(e)}", exc_info=True)
             raise Exception("AI generation failed with Anthropic")
 
+
 class LLMProviderFactory:
     """Factory for creating configured LLM provider instances."""
 
     @staticmethod
-    def create(provider_name: str = None) -> BaseLLMProvider:
+    def create(provider_name: Optional[str] = None) -> BaseLLMProvider:
         """Return an LLM provider by name or the configured default provider."""
         name = provider_name or settings.DEFAULT_AI_PROVIDER
         try:

@@ -44,6 +44,8 @@ services:
       - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000/api/v1
+    env_file:
+      - .env
 
 volumes:
   redis-data:

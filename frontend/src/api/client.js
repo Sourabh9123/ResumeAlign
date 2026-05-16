@@ -27,11 +27,17 @@ export const resumeApi = {
         });
         return response.data;
     },
-    optimize: async (resumeText, jobDescriptionText, additionalPrompt) => {
+    optimize: async (resumeText, jobDescriptionText, additionalPrompt, jobDescriptionUrl, resumeFilename) => {
         const formData = new FormData();
         formData.append('resume_text', resumeText);
         if (jobDescriptionText) {
             formData.append('job_description', jobDescriptionText);
+        }
+        if (jobDescriptionUrl) {
+            formData.append('job_description_url', jobDescriptionUrl);
+        }
+        if (resumeFilename) {
+            formData.append('resume_filename', resumeFilename);
         }
         if (additionalPrompt) {
             formData.append('additional_prompt', additionalPrompt);
@@ -40,6 +46,10 @@ export const resumeApi = {
             headers: { 'Content-Type': 'multipart/form-data' },
             timeout: 300000, // 5 minutes timeout to handle long LLM operations
         });
+        return response.data;
+    },
+    history: async (params = {}) => {
+        const response = await apiClient.get('/resume/history', { params });
         return response.data;
     }
 };

@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     DATABASE_POOL_TIMEOUT: int = 30
     DATABASE_POOL_RECYCLE: int = 1800
     REDIS_URL: str
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_LLM_REQUESTS: int = 10
+    RATE_LIMIT_LLM_WINDOW_SECONDS: int = 3600
+    RATE_LIMIT_GENERAL_REQUESTS: int = 120
+    RATE_LIMIT_GENERAL_WINDOW_SECONDS: int = 60
+    RATE_LIMIT_AUTH_REQUESTS: int = 10
+    RATE_LIMIT_AUTH_WINDOW_SECONDS: int = 300
+    CACHE_ENABLED: bool = True
+    CACHE_LLM_TTL_SECONDS: int = 86400
     
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
@@ -43,8 +52,8 @@ class Settings(BaseSettings):
     
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
-    AWS_REGION: str = "us-east-1"
-    AWS_S3_BUCKET: Optional[str] = None
+    AWS_REGION: str = "ap-south-1"
+    AWS_S3_BUCKET: str = "resume-builder-s3-sourabh"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -63,6 +63,7 @@ Return the output strictly as a valid JSON object without any markdown formattin
 The JSON MUST have the following structure:
 {{
   "job_title": "Target Job Title",
+  "company_name": "Hiring company name, or null if not present",
   "seniority_level": "Entry / Mid / Senior / Executive",
   "core_skills": ["Must-have technical or hard skill 1", "Skill 2"],
   "soft_skills": ["Leadership", "Communication", etc.],

@@ -7,6 +7,7 @@ class ResumeGraphState(TypedDict):
     raw_resume_text: str
     structured_resume: Dict[str, Any]
     jd_text: str
+    jd_analysis: Dict[str, Any]
     additional_prompt: str
     jd_keywords: List[str]
     optimized_resume: Dict[str, Any]
@@ -14,4 +15,5 @@ class ResumeGraphState(TypedDict):
     generated_latex: str
     pdf_path: str
     pdf_s3_url: Optional[str]
+    pdf_s3_key: Optional[str]
     errors: List[str]

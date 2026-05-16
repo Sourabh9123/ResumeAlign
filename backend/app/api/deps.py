@@ -1,4 +1,5 @@
 from fastapi import Depends, HTTPException, status
+from fastapi import Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
@@ -6,6 +7,7 @@ from app.models.user import User
 from app.db.database import get_db
 from app.core.logging import logger
 from app.services.auth import AuthService
+from app.services.rate_limiter import RateLimitPolicy, rate_limiter
 
 """Reusable FastAPI dependencies for authentication and service wiring."""
 
@@ -53,3 +55,49 @@ async def get_current_active_user(
     if not current_user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
     return current_user
+
+
+async def enforce_llm_rate_limit(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Apply the strict rate limit used by LLM and PDF generation endpoints."""
+    await rate_limiter.check(
+        RateLimitPolicy(
+            name="llm",
+            requests=settings.RATE_LIMIT_LLM_REQUESTS,
+            window_seconds=settings.RATE_LIMIT_LLM_WINDOW_SECONDS,
+        ),
+        request,
+        current_user,
+    )
+    return current_user
+
+
+async def enforce_general_rate_limit(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Apply a broader authenticated-user rate limit for lighter API endpoints."""
+    await rate_limiter.check(
+        RateLimitPolicy(
+            name="general",
+            requests=settings.RATE_LIMIT_GENERAL_REQUESTS,
+            window_seconds=settings.RATE_LIMIT_GENERAL_WINDOW_SECONDS,
+        ),
+        request,
+        current_user,
+    )
+    return current_user
+
+
+async def enforce_auth_rate_limit(request: Request) -> None:
+    """Apply an IP-based rate limit for unauthenticated auth endpoints."""
+    await rate_limiter.check(
+        RateLimitPolicy(
+            name="auth",
+            requests=settings.RATE_LIMIT_AUTH_REQUESTS,
+            window_seconds=settings.RATE_LIMIT_AUTH_WINDOW_SECONDS,
+        ),
+        request,
+    )

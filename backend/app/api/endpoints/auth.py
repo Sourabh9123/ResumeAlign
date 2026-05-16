@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from app.api.deps import get_auth_service, get_current_active_user
+from app.api.deps import enforce_auth_rate_limit, get_auth_service, get_current_active_user
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.token import Token
 from app.models.user import User
@@ -26,6 +26,7 @@ async def read_current_user(current_user: User = Depends(get_current_active_user
 @router.post("/register", response_model=UserResponse)
 async def register(
     user_in: UserCreate,
+    _: None = Depends(enforce_auth_rate_limit),
     auth_service: AuthService = Depends(get_auth_service),
 ):
     """Create a new user account.
@@ -45,6 +46,7 @@ async def register(
 
 @router.post("/login", response_model=Token)
 async def login(
+    _: None = Depends(enforce_auth_rate_limit),
     form_data: OAuth2PasswordRequestForm = Depends(),
     auth_service: AuthService = Depends(get_auth_service),
 ):

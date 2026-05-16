@@ -1,7 +1,7 @@
 import secrets
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
@@ -11,6 +11,7 @@ from app.api.api import api_router
 from app.core.logging import logger
 from app.db.database import engine, Base
 from app.services.llm_factory import LLMProviderFactory
+from app.services.rate_limiter import RateLimitPolicy, rate_limiter
 from pydantic import BaseModel
 
 docs_security = HTTPBasic()
@@ -111,16 +112,24 @@ class PromptRequest(BaseModel):
     prompt: str
 
 @app.post(f"{settings.API_V1_STR}/test-ai")
-async def test_ai(request: PromptRequest):
+async def test_ai(request: Request, prompt_request: PromptRequest):
     """Generate a test response from the configured AI provider.
 
     This utility endpoint is meant for development verification of API keys,
     model configuration, and provider connectivity. It returns a `400` response
     for provider configuration problems and `502` for upstream provider errors.
     """
+    await rate_limiter.check(
+        RateLimitPolicy(
+            name="llm-test",
+            requests=settings.RATE_LIMIT_LLM_REQUESTS,
+            window_seconds=settings.RATE_LIMIT_LLM_WINDOW_SECONDS,
+        ),
+        request,
+    )
     try:
         provider = LLMProviderFactory.create(settings.DEFAULT_AI_PROVIDER)
-        response = await provider.generate(request.prompt)
+        response = await provider.generate(prompt_request.prompt)
         return {"provider": settings.DEFAULT_AI_PROVIDER, "response": response}
     except ValueError as exc:
         logger.warning(f"Test AI configuration failed: {str(exc)}")

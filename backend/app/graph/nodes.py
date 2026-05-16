@@ -5,9 +5,19 @@ from app.core.prompts import PARSE_RESUME_PROMPT, ANALYZE_JD_PROMPT, OPTIMIZE_RE
 from app.services.llm_factory import LLMProviderFactory
 from app.core.config import settings
 from app.core.logging import logger
+from app.services.cache import RedisCache
 
 async def _call_llm_json(prompt: str) -> Dict[str, Any]:
-    """Helper to call LLM and parse JSON output safely."""
+    """Call the configured LLM, cache JSON responses, and parse output safely."""
+    cache = RedisCache(namespace="llm-json")
+    cache_key = cache.digest(
+        f"{settings.DEFAULT_AI_PROVIDER}:{settings.OPENAI_MODEL}:{settings.ANTHROPIC_MODEL}:{prompt}"
+    )
+    cached = await cache.get_json(cache_key)
+    if cached is not None:
+        logger.info("LLM JSON cache hit")
+        return cached
+
     provider = LLMProviderFactory.create(settings.DEFAULT_AI_PROVIDER)
     response_text = await provider.generate(prompt)
     
@@ -23,7 +33,9 @@ async def _call_llm_json(prompt: str) -> Dict[str, Any]:
     cleaned_text = cleaned_text.strip()
     
     try:
-        return json.loads(cleaned_text)
+        parsed = json.loads(cleaned_text)
+        await cache.set_json(cache_key, parsed, settings.CACHE_LLM_TTL_SECONDS)
+        return parsed
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse LLM JSON response: {cleaned_text}")
         raise ValueError("LLM returned malformed JSON") from e
@@ -50,13 +62,13 @@ async def analyze_jd(state: ResumeGraphState) -> Dict[str, Any]:
     if not jd_text:
         # If no JD is provided, we skip analysis
         logger.info("No JD provided, skipping analysis")
-        return {"jd_keywords": []}
+        return {"jd_keywords": [], "jd_analysis": {}}
         
     prompt = ANALYZE_JD_PROMPT.format(jd_text=jd_text)
     try:
         jd_analysis = await _call_llm_json(prompt)
         keywords = jd_analysis.get("core_skills", []) + jd_analysis.get("soft_skills", [])
-        return {"jd_keywords": keywords} # we might want to store the whole analysis in state later
+        return {"jd_keywords": keywords, "jd_analysis": jd_analysis}
     except Exception as e:
         logger.error("analyze_jd node failed", exc_info=True)
         raise
@@ -68,6 +80,7 @@ async def optimize_resume(state: ResumeGraphState) -> Dict[str, Any]:
     jd_text = state.get("jd_text")
     additional_prompt = state.get("additional_prompt", "")
     jd_keywords = state.get("jd_keywords", [])
+    jd_analysis = state.get("jd_analysis", {})
     
     if not structured_resume:
         raise ValueError("Missing structured_resume in state")
@@ -78,7 +91,7 @@ async def optimize_resume(state: ResumeGraphState) -> Dict[str, Any]:
         
     prompt = OPTIMIZE_RESUME_PROMPT.format(
         structured_resume=json.dumps(structured_resume, indent=2),
-        jd_analysis=json.dumps({"keywords": jd_keywords, "jd": jd_text}),
+        jd_analysis=json.dumps({**jd_analysis, "keywords": jd_keywords, "jd": jd_text}),
         additional_instructions=additional_prompt if additional_prompt else "No additional instructions provided."
     )
     
@@ -111,19 +124,18 @@ async def generate_pdf(state: ResumeGraphState) -> Dict[str, Any]:
     try:
         # Generate the PDF locally
         output_dir = tempfile.gettempdir()
-        filename = f"resume_{user_id}_{uuid.uuid4().hex[:8]}"
+        filename = f"cv_{uuid.uuid4().hex[:10]}"
         pdf_path = await generator.generate_pdf(optimized_resume, output_dir=output_dir, filename=filename, jd_text=jd_text)
         
         # Upload to S3
-        s3_object_name = f"resumes/{user_id}/{os.path.basename(pdf_path)}"
+        s3_object_name = f"r/{uuid.uuid4().hex[:20]}.pdf"
         upload_success = await s3_service.upload_file(pdf_path, s3_object_name)
         
-        pdf_s3_url = None
+        pdf_s3_key = None
         if upload_success:
-            # Generate a 1-hour presigned URL for secure frontend download
-            pdf_s3_url = await s3_service.generate_presigned_url(s3_object_name, expiration=3600)
+            pdf_s3_key = s3_object_name
             
-        return {"pdf_path": pdf_path, "pdf_s3_url": pdf_s3_url}
+        return {"pdf_path": pdf_path, "pdf_s3_url": None, "pdf_s3_key": pdf_s3_key}
         
     except Exception as e:
         logger.error("generate_pdf node failed", exc_info=True)

@@ -1,5 +1,5 @@
 from typing import Optional
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "resume_builder"
+    POSTGRES_SSLMODE: Optional[str] = None
     DATABASE_ECHO: bool = False
     DATABASE_POOL_SIZE: int = 5
     DATABASE_MAX_OVERFLOW: int = 10
@@ -61,9 +62,12 @@ class Settings(BaseSettings):
     def DATABASE_URI(self) -> str:
         """Build the async SQLAlchemy PostgreSQL URL from individual settings."""
         password = quote_plus(self.POSTGRES_PASSWORD)
-        return (
+        database_uri = (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{password}"
             f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
+        if self.POSTGRES_SSLMODE:
+            database_uri = f"{database_uri}?{urlencode({'ssl': self.POSTGRES_SSLMODE})}"
+        return database_uri
 
 settings = Settings()

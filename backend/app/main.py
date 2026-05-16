@@ -17,6 +17,12 @@ from app.services.rate_limiter import RateLimitPolicy, rate_limiter
 
 docs_security = HTTPBasic()
 
+ALLOWED_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://resumeai.lol",
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,7 +55,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

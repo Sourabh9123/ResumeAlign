@@ -6,21 +6,22 @@ An AI-powered platform to optimize your resume against job descriptions using La
 
 - **JWT Authentication**: Secure user login and management.
 - **Resume Parsing**: Extract and structure data from raw text/PDF using AI and OCR.
-- **JD Analysis**: Extract keywords and requirements from job descriptions.
-- **AI Optimization**: Matches and optimizes the resume specifically for the JD using LLMs (OpenAI, Anthropic, Gemini).
-- **LaTeX PDF Generation**: Outputs a pixel-perfect, ATS-friendly PDF.
-- **LangGraph**: Orchestrates the multi-agent AI workflows.
-- **Dockerized**: Easy setup and deployment.
+- **JD Analysis**: Extract keywords and requirements from job descriptions to maximize ATS scores.
+- **Custom AI Instructions Pipeline**: Allows users to explicitly guide the AI's tone, focus, and structural rewrites securely without prompt injection risks.
+- **AI Optimization**: Matches and optimizes the resume specifically for the JD using LLMs (OpenAI, Anthropic, Gemini) via a resilient LangGraph workflow.
+- **Premium Full-Screen UI**: An edge-to-edge, responsive "glassmorphism" React dashboard with sophisticated asynchronous loading states.
+- **Advanced LaTeX PDF Generation**: Outputs a pixel-perfect, ATS-friendly PDF, dynamically generating bullet points (`\begin{itemize}`) for clarity and cleanly formatted interactive hyperlinks.
+- **Dockerized Architecture**: Easy setup and deployment with centralized `.env` management.
 
 ## Architecture
 
 The project uses a clean architecture backend (FastAPI) and a modern frontend (Vite React + TailwindCSS).
-It utilizes `asyncio` subprocesses to handle OCR (`tesseract`) and PDF generation (`xelatex`) locally to keep the setup simple for solo usage without needing a heavy Celery queue system initially.
+It utilizes `asyncio` subprocesses to handle OCR (`tesseract`) and PDF generation (`xelatex`) locally to keep the setup simple for solo usage without needing a heavy Celery queue system initially. All system prompts are centralized for rapid engineering.
 
 ## Tech Stack
 
 - **Backend**: Python 3.11, FastAPI, SQLAlchemy (Async), PostgreSQL, LangGraph, LangChain, Tesseract OCR, XeLaTeX
-- **Frontend**: React 18, Vite, TailwindCSS, Zustand
+- **Frontend**: React 18, Vite, TailwindCSS (with backdrop-blur and responsive grid layouts)
 - **Infrastructure**: Docker & Docker Compose
 
 ## Getting Started
@@ -32,7 +33,7 @@ It utilizes `asyncio` subprocesses to handle OCR (`tesseract`) and PDF generatio
    ```
 3. Run with Docker Compose:
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
 
 ### Accessing the apps
@@ -42,13 +43,13 @@ It utilizes `asyncio` subprocesses to handle OCR (`tesseract`) and PDF generatio
 
 ## Development
 
-Use the included `Makefile` (if provided) for quick commands, or standard docker-compose commands.
+Use the included `Makefile` (if provided) for quick commands, or standard `docker compose` commands.
 
 ### Backend Migrations
 
 ```bash
-docker-compose exec backend alembic revision --autogenerate -m "Initial schema"
-docker-compose exec backend alembic upgrade head
+docker compose exec backend alembic revision --autogenerate -m "Initial schema"
+docker compose exec backend alembic upgrade head
 ```
 
 ## CI/CD Pipeline

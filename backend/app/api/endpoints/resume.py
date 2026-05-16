@@ -45,6 +45,7 @@ async def optimize_resume(
             "structured_resume": {},
             "optimized_resume": {},
             "pdf_path": "",
+            "pdf_s3_url": None,
             "ats_score": 0.0,
             "generated_latex": "",
             "errors": []
@@ -68,7 +69,9 @@ async def optimize_resume(
         
         pdf_base64 = ""
         pdf_path = result.get("pdf_path")
-        if pdf_path and os.path.exists(pdf_path):
+        pdf_s3_url = result.get("pdf_s3_url")
+        
+        if pdf_path and os.path.exists(pdf_path) and not pdf_s3_url:
             with open(pdf_path, "rb") as pdf_file:
                 pdf_base64 = base64.b64encode(pdf_file.read()).decode('utf-8')
 
@@ -78,6 +81,7 @@ async def optimize_resume(
             "jd_keywords": jd_keywords,
             "pdf_path": pdf_path,
             "pdf_base64": pdf_base64,
+            "pdf_s3_url": pdf_s3_url,
             "ats_score": ats_score
         }
     except Exception as e:

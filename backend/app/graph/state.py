@@ -13,4 +13,5 @@ class ResumeGraphState(TypedDict):
     ats_score: float
     generated_latex: str
     pdf_path: str
+    pdf_s3_url: Optional[str]
     errors: List[str]

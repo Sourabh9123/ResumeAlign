@@ -91,7 +91,7 @@ async def optimize_resume(state: ResumeGraphState) -> Dict[str, Any]:
         return {"optimized_resume": structured_resume}
 
 async def generate_pdf(state: ResumeGraphState) -> Dict[str, Any]:
-    """Node to generate a PDF file from the optimized resume state."""
+    """Node to generate a PDF file from the optimized resume state, and upload it to S3."""
     logger.info("Starting node: generate_pdf")
     optimized_resume = state.get("optimized_resume")
     jd_text = state.get("jd_text")
@@ -100,16 +100,31 @@ async def generate_pdf(state: ResumeGraphState) -> Dict[str, Any]:
         raise ValueError("Missing optimized_resume in state")
         
     from app.latex.generator import LatexGenerator
+    from app.services.s3_service import S3Service
     import uuid
     import tempfile
+    import os
     
     generator = LatexGenerator()
+    s3_service = S3Service()
+    
     try:
-        # Generate the PDF and return its path
+        # Generate the PDF locally
         output_dir = tempfile.gettempdir()
         filename = f"resume_{user_id}_{uuid.uuid4().hex[:8]}"
         pdf_path = await generator.generate_pdf(optimized_resume, output_dir=output_dir, filename=filename, jd_text=jd_text)
-        return {"pdf_path": pdf_path}
+        
+        # Upload to S3
+        s3_object_name = f"resumes/{user_id}/{os.path.basename(pdf_path)}"
+        upload_success = await s3_service.upload_file(pdf_path, s3_object_name)
+        
+        pdf_s3_url = None
+        if upload_success:
+            # Generate a 1-hour presigned URL for secure frontend download
+            pdf_s3_url = await s3_service.generate_presigned_url(s3_object_name, expiration=3600)
+            
+        return {"pdf_path": pdf_path, "pdf_s3_url": pdf_s3_url}
+        
     except Exception as e:
         logger.error("generate_pdf node failed", exc_info=True)
         raise

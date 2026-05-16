@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     DEFAULT_AI_PROVIDER: str = "openai"
     OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_LATEX_MODEL: str = "gpt-4.1-mini"
     ANTHROPIC_MODEL: str = "claude-3-haiku-20240307"
     XPDF_PDFTOTEXT_BINARY: str = "pdftotext"
     XPDF_PDFTOTEXT_TIMEOUT_SECONDS: int = 30

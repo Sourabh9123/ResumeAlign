@@ -30,6 +30,7 @@ async def extract_resume_text(
 async def optimize_resume(
     resume_text: str = Form(...),
     job_description: Optional[str] = Form(None),
+    additional_prompt: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """Run the LangGraph workflow to parse and optionally optimize a resume."""
@@ -39,6 +40,7 @@ async def optimize_resume(
             "user_id": str(current_user.id) if hasattr(current_user, "id") else "unknown",
             "raw_resume_text": resume_text,
             "jd_text": job_description or "",
+            "additional_prompt": additional_prompt or "",
             "jd_keywords": [],
             "structured_resume": {},
             "optimized_resume": {},

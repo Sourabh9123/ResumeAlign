@@ -27,14 +27,18 @@ export const resumeApi = {
         });
         return response.data;
     },
-    optimize: async (resumeText, jobDescriptionText) => {
+    optimize: async (resumeText, jobDescriptionText, additionalPrompt) => {
         const formData = new FormData();
         formData.append('resume_text', resumeText);
         if (jobDescriptionText) {
             formData.append('job_description', jobDescriptionText);
         }
+        if (additionalPrompt) {
+            formData.append('additional_prompt', additionalPrompt);
+        }
         const response = await apiClient.post('/resume/optimize', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 300000, // 5 minutes timeout to handle long LLM operations
         });
         return response.data;
     }

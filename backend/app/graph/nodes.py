@@ -1,7 +1,7 @@
 import json
 from typing import Dict, Any
 from app.graph.state import ResumeGraphState
-from app.graph.prompts import PARSE_RESUME_PROMPT, ANALYZE_JD_PROMPT, OPTIMIZE_RESUME_PROMPT
+from app.core.prompts import PARSE_RESUME_PROMPT, ANALYZE_JD_PROMPT, OPTIMIZE_RESUME_PROMPT
 from app.services.llm_factory import LLMProviderFactory
 from app.core.config import settings
 from app.core.logging import logger
@@ -62,22 +62,24 @@ async def analyze_jd(state: ResumeGraphState) -> Dict[str, Any]:
         raise
 
 async def optimize_resume(state: ResumeGraphState) -> Dict[str, Any]:
-    """Node to optimize the structured resume against analyzed job keywords."""
+    """Node to optimize the structured resume against analyzed job keywords and user prompts."""
     logger.info("Starting node: optimize_resume")
     structured_resume = state.get("structured_resume")
     jd_text = state.get("jd_text")
+    additional_prompt = state.get("additional_prompt", "")
     jd_keywords = state.get("jd_keywords", [])
     
     if not structured_resume:
         raise ValueError("Missing structured_resume in state")
         
-    if not jd_text or not jd_keywords:
-        logger.info("No JD or keywords found, skipping optimization")
+    if not jd_text and not additional_prompt:
+        logger.info("No JD and no additional prompt found, skipping optimization")
         return {"optimized_resume": structured_resume}
         
     prompt = OPTIMIZE_RESUME_PROMPT.format(
         structured_resume=json.dumps(structured_resume, indent=2),
-        jd_analysis=json.dumps({"keywords": jd_keywords, "jd": jd_text})
+        jd_analysis=json.dumps({"keywords": jd_keywords, "jd": jd_text}),
+        additional_instructions=additional_prompt if additional_prompt else "No additional instructions provided."
     )
     
     try:
@@ -92,6 +94,7 @@ async def generate_pdf(state: ResumeGraphState) -> Dict[str, Any]:
     """Node to generate a PDF file from the optimized resume state."""
     logger.info("Starting node: generate_pdf")
     optimized_resume = state.get("optimized_resume")
+    jd_text = state.get("jd_text")
     user_id = state.get("user_id", "unknown")
     if not optimized_resume:
         raise ValueError("Missing optimized_resume in state")
@@ -105,7 +108,7 @@ async def generate_pdf(state: ResumeGraphState) -> Dict[str, Any]:
         # Generate the PDF and return its path
         output_dir = tempfile.gettempdir()
         filename = f"resume_{user_id}_{uuid.uuid4().hex[:8]}"
-        pdf_path = await generator.generate_pdf(optimized_resume, output_dir=output_dir, filename=filename)
+        pdf_path = await generator.generate_pdf(optimized_resume, output_dir=output_dir, filename=filename, jd_text=jd_text)
         return {"pdf_path": pdf_path}
     except Exception as e:
         logger.error("generate_pdf node failed", exc_info=True)

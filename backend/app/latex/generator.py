@@ -1,56 +1,61 @@
 import asyncio
 import os
-from jinja2 import Template
+import json
 from app.core.logging import logger
+from langchain_openai import ChatOpenAI
+from app.core.config import settings
 
 class LatexGenerator:
-    """Render resume data into LaTeX and compile it to PDF."""
+    """Generate resume into LaTeX using LLM and compile it to PDF."""
 
-    def __init__(self, template_path: str = "app/latex/templates/default.tex"):
-        """Create a generator using the given Jinja-compatible LaTeX template."""
-        self.template_path = template_path
+    def __init__(self):
+        """Create a generator."""
+        pass
 
-    def _escape_latex_dict(self, data, key=None):
-        if key == "links":
-            return data
-        if isinstance(data, dict):
-            return {k: self._escape_latex_dict(v, k) for k, v in data.items()}
-        elif isinstance(data, list):
-            return [self._escape_latex_dict(v, key) for v in data]
-        elif isinstance(data, str):
-            latex_special_chars = {
-                '\\': r'\textbackslash{}', '&': r'\&', '%': r'\%',
-                '$': r'\$', '#': r'\#', '_': r'\_', '{': r'\{',
-                '}': r'\}', '~': r'\textasciitilde{}', '^': r'\textasciicircum{}',
-            }
-            res = ""
-            for char in data:
-                res += latex_special_chars.get(char, char)
-            return res
-        return data
-
-    async def generate_pdf(self, resume_data: dict, output_dir: str, filename: str) -> str:
-        """Render a resume template and compile it with `xelatex`.
+    async def generate_pdf(self, resume_data: dict, output_dir: str, filename: str, jd_text: str = None) -> str:
+        """Generate a resume using an LLM and compile it with `xelatex`.
 
         Returns the generated PDF path. Raises a generic generation exception
         after logging the original failure so API callers do not receive raw
         compiler output or filesystem details.
         """
         try:
-            # Escape LaTeX special characters
-            safe_resume_data = self._escape_latex_dict(resume_data)
+            jd_instruction = ""
+            if jd_text:
+                jd_instruction = f"\nTarget Job Description:\n{jd_text}\n\nPlease tailor the presentation, emphasis, and layout of the resume to highlight the skills and experiences most relevant to this specific Job Description. Make it stand out for this exact role."
 
-            with open(self.template_path, 'r') as f:
-                template_content = f.read()
+            from app.core.prompts import LATEX_GENERATOR_PROMPT
             
-            template = Template(template_content)
-            latex_code = template.render(resume=safe_resume_data)
+            prompt = LATEX_GENERATOR_PROMPT.format(
+                jd_instruction=jd_instruction,
+                resume_data=json.dumps(resume_data, indent=2)
+            )
+            
+            llm = ChatOpenAI(model=settings.OPENAI_LATEX_MODEL, api_key=settings.OPENAI_API_KEY, max_tokens=4000)
+            logger.info("Requesting LaTeX code from LLM...")
+            response = await llm.ainvoke(prompt)
+            
+            latex_code = response.content
+            
+            # Extract LaTeX code from markdown block if present
+            latex_code = latex_code.strip()
+            if latex_code.startswith("```latex"):
+                latex_code = latex_code[8:]
+            elif latex_code.startswith("```tex"):
+                latex_code = latex_code[6:]
+            elif latex_code.startswith("```"):
+                latex_code = latex_code[3:]
+            if latex_code.endswith("```"):
+                latex_code = latex_code[:-3]
+            latex_code = latex_code.strip()
             
             tex_file_path = os.path.join(output_dir, f"{filename}.tex")
             pdf_file_path = os.path.join(output_dir, f"{filename}.pdf")
             
             with open(tex_file_path, "w") as f:
                 f.write(latex_code)
+                
+            logger.info(f"Written LaTeX code to {tex_file_path}")
                 
             process = await asyncio.create_subprocess_exec(
                 "xelatex",

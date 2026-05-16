@@ -11,6 +11,11 @@ ALGORITHM = "HS256"
 def create_access_token(
     subject: Union[str, Any], expires_delta: timedelta = None
 ) -> str:
+    """Create a signed JWT access token for a user or subject identifier.
+
+    The token contains a string `sub` claim and an expiration timestamp. When no
+    custom expiration is provided, the default lifetime comes from settings.
+    """
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -22,7 +27,9 @@ def create_access_token(
     return encoded_jwt
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Return whether a plaintext password matches a stored Argon2 hash."""
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
+    """Hash a plaintext password using the configured password context."""
     return pwd_context.hash(password)

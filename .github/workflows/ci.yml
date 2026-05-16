@@ -1,0 +1,93 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - development
+  pull_request:
+    branches:
+      - main
+      - development
+
+jobs:
+  backend-lint-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest ruff black mypy
+
+      - name: Lint with Ruff
+        run: ruff check .
+        continue-on-error: true # Allows CI to pass even if linting fails initially
+
+      - name: Format with Black
+        run: black --check .
+        continue-on-error: true
+
+      - name: Type check with mypy
+        run: mypy app/
+        continue-on-error: true
+
+      - name: Run Tests
+        run: pytest
+        continue-on-error: true # Placeholder since no tests are fully implemented yet
+
+  frontend-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Linter
+        run: npm run lint
+        continue-on-error: true
+
+  # deployment:
+  #   needs: [backend-lint-and-test, frontend-lint]
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main'
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v4
+  #
+  #     # Example Deployment Step to a VPS via SSH
+  #     # - name: Deploy to Server
+  #     #   uses: appleboy/ssh-action@master
+  #     #   with:
+  #     #     host: ${{ secrets.SERVER_HOST }}
+  #     #     username: ${{ secrets.SERVER_USER }}
+  #     #     key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #     #     script: |
+  #     #       cd /path/to/project
+  #     #       git pull origin main
+  #     #       docker-compose up -d --build

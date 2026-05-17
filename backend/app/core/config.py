@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-3-haiku-20240307"
     XPDF_PDFTOTEXT_BINARY: str = "pdftotext"
     XPDF_PDFTOTEXT_TIMEOUT_SECONDS: int = 30
+    JD_URL_FETCH_TIMEOUT_SECONDS: int = 12
+    JD_URL_MAX_CHARS: int = 30000
+    JD_URL_MIN_TEXT_CHARS: int = 250
 
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None

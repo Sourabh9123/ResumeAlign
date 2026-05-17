@@ -65,7 +65,6 @@ function getCompanyLabel(item) {
 export default function Dashboard() {
     const [file, setFile] = useState(null);
     const [jdText, setJdText] = useState("");
-    const [jdUrl, setJdUrl] = useState("");
     const [additionalPrompt, setAdditionalPrompt] = useState("");
     const [loading, setLoading] = useState(false);
     const [loadingStep, setLoadingStep] = useState("");
@@ -140,7 +139,7 @@ export default function Dashboard() {
             const extractedText = extractData.extracted_text;
             
             setLoadingStep("AI is deeply analyzing and optimizing your resume. This can take a few minutes...");
-            const optimizeData = await resumeApi.optimize(extractedText, jdText, additionalPrompt, jdUrl, file.name);
+            const optimizeData = await resumeApi.optimize(extractedText, jdText, additionalPrompt, "", file.name);
             
             setLoadingStep("Finalizing your stunning PDF...");
             setResults(optimizeData);
@@ -201,16 +200,22 @@ export default function Dashboard() {
 
                     {/* Step 2: JD */}
                     <div className="space-y-3">
-                        <label className="flex items-center text-sm font-bold text-gray-300 uppercase tracking-widest">
-                            <span className="w-6 h-6 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center mr-2 text-xs">2</span>
-                            Job Description Link
+                        <label className="flex items-center justify-between gap-3 text-sm font-bold text-gray-300 uppercase tracking-widest">
+                            <span className="flex min-w-0 items-center">
+                                <span className="w-6 h-6 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center mr-2 text-xs">2</span>
+                                Job Description Link
+                            </span>
+                            <span className="shrink-0 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-200">
+                                Coming Soon
+                            </span>
                         </label>
                         <input
                             type="url"
-                            className="w-full bg-gray-900/50 border border-gray-700/80 rounded-2xl p-4 text-sm text-gray-300 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all placeholder-gray-600 shadow-inner"
-                            placeholder="https://company.com/jobs/software-engineer"
-                            value={jdUrl}
-                            onChange={(e) => setJdUrl(e.target.value)}
+                            className="w-full cursor-not-allowed rounded-2xl border border-gray-800 bg-gray-900/30 p-4 text-sm text-gray-500 shadow-inner placeholder-gray-600"
+                            placeholder="Job description link support is coming soon"
+                            value=""
+                            disabled
+                            aria-disabled="true"
                         />
                     </div>
 

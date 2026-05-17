@@ -19,10 +19,6 @@ from app.graph.workflow import app as langgraph_app
 from app.models.resume import JobDescription, OptimizationHistory, Resume, ResumeVersion
 from app.models.user import User
 from app.parsers.document_parser import DocumentParserFactory
-from app.services.job_description_fetcher import (
-    JobDescriptionFetchError,
-    fetch_job_description_text,
-)
 from app.services.s3_service import S3PresignedUrlService
 
 router = APIRouter()
@@ -232,23 +228,12 @@ async def optimize_resume(
         HTTPException: 500 when optimization, PDF generation, or persistence fails.
     """
     try:
-        resolved_job_description = job_description or ""
-        jd_text_source = "pasted" if resolved_job_description else None
-        if not resolved_job_description and job_description_url:
-            try:
-                resolved_job_description = await fetch_job_description_text(
-                    job_description_url
-                )
-                jd_text_source = "url"
-            except JobDescriptionFetchError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-
         # Initial state for the LangGraph workflow
         initial_state: ResumeGraphState = {
             "user_id": (str(current_user.id) if hasattr(current_user, "id") else "unknown"),
             "resume_filename": resume_filename,
             "raw_resume_text": resume_text,
-            "jd_text": resolved_job_description,
+            "jd_text": job_description or "",
             "additional_prompt": additional_prompt or "",
             "jd_keywords": [],
             "jd_analysis": {},
@@ -307,16 +292,15 @@ async def optimize_resume(
         )
 
         jd = None
-        if resolved_job_description or job_description_url:
+        if job_description or job_description_url:
             analyzed_title = _clean_jd_field(jd_analysis.get("job_title"))
             analyzed_company = _clean_jd_field(jd_analysis.get("company_name"))
             jd = JobDescription(
                 user_id=current_user.id,
-                title=analyzed_title
-                or _build_jd_title(resolved_job_description, job_description_url),
+                title=analyzed_title or _build_jd_title(job_description, job_description_url),
                 company=analyzed_company,
                 source_url=job_description_url,
-                raw_text=resolved_job_description,
+                raw_text=job_description or "",
                 parsed_keywords={**jd_analysis, "keywords": jd_keywords},
             )
             db.add(jd)
@@ -352,11 +336,8 @@ async def optimize_resume(
             "jd_title": jd.title if jd else "No job description",
             "jd_company": jd.company if jd else None,
             "jd_source_url": jd.source_url if jd else None,
-            "jd_text_source": jd_text_source,
             "ats_score": ats_score,
         }
-    except HTTPException:
-        raise
     except Exception:
         await db.rollback()
         logger.error("Failed to optimize resume", exc_info=True)

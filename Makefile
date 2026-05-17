@@ -3,8 +3,9 @@ BACKEND_DIR := backend
 PYTHON_PATHS := $(BACKEND_DIR)/app $(BACKEND_DIR)/alembic
 PYTHON_FILES := $(shell find $(PYTHON_PATHS) -type f -name '*.py')
 BLACK_FLAGS := --workers 1 --quiet
+COMPOSE_CONTAINERS := rb_frontend rb_backend rb_redis
 
-.PHONY: help install-backend format format-check lint type-check test ci deploy
+.PHONY: help install-backend format format-check lint type-check test ci deploy deploy-clean
 
 help:
 	@echo "Available targets:"
@@ -16,6 +17,7 @@ help:
 	@echo "  test             Run backend tests"
 	@echo "  ci               Run format checks, linting, and tests"
 	@echo "  deploy           Rebuild and restart Docker Compose services"
+	@echo "  deploy-clean     Remove stale Docker Compose containers"
 
 install-backend:
 	$(PYTHON) -m pip install -r $(BACKEND_DIR)/requirements.txt
@@ -43,7 +45,11 @@ test:
 
 ci: format-check lint type-check test
 
+deploy-clean:
+	docker compose down --remove-orphans || true
+	docker rm -f $(COMPOSE_CONTAINERS) 2>/dev/null || true
+
 deploy:
-	docker compose down || true
+	$(MAKE) deploy-clean
 	docker compose up -d --build
 	docker image prune -f

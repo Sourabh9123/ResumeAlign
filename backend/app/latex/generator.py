@@ -75,11 +75,28 @@ class LatexGenerator:
             )
             stdout, stderr = await process.communicate()
 
-            if process.returncode != 0:
-                stdout_text = stdout.decode()
-                error_msg = f"LaTeX compilation failed. Stderr: {stderr.decode()} | Stdout snippet: {stdout_text[-1000:]}"
+            pdf_exists = os.path.exists(pdf_file_path)
+            pdf_size = os.path.getsize(pdf_file_path) if pdf_exists else 0
+
+            if not pdf_exists or pdf_size == 0:
+                stdout_text = stdout.decode(errors="replace")
+                stderr_text = stderr.decode(errors="replace")
+                error_msg = (
+                    f"LaTeX compilation failed to produce a valid PDF. "
+                    f"Return code: {process.returncode}. PDF exists: {pdf_exists}. "
+                    f"PDF size: {pdf_size}. Stderr: {stderr_text} | "
+                    f"Stdout snippet: {stdout_text[-1000:]}"
+                )
                 logger.error(error_msg)
                 raise Exception("LaTeX compilation failed")
+
+            if process.returncode != 0:
+                stdout_text = stdout.decode(errors="replace")
+                logger.warning(
+                    "XeLaTeX returned a non-zero exit code but produced a valid PDF "
+                    f"at {pdf_file_path} ({pdf_size} bytes). Treating compiler "
+                    f"warnings as non-fatal. Stdout snippet: {stdout_text[-1000:]}"
+                )
 
             logger.info(f"Successfully generated PDF at {pdf_file_path}")
             return pdf_file_path

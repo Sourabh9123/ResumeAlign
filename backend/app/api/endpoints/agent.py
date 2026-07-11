@@ -138,8 +138,19 @@ async def execute_agent_action(
             # 4. Bind the remote tools to the Langchain LLM
             llm = ChatOpenAI(model=settings.OPENAI_MODEL, temperature=0).bind_tools(tools)
             
+            # Fetch User Profile Memories
+            from app.services.memory_service import MemoryService
+            memory_service = MemoryService(db)
+            raw_memories = await memory_service.list_memories(str(current_user.id), category="Profile")
+            memory_context = "\n".join([f"- {m.key}: {m.value}" for m in raw_memories])
+            
+            if memory_context:
+                memory_prompt = f"\n\nHere is what you know about the user based on their saved profile/resume:\n{memory_context}\n\nUse these details if you need to fill out forms, signatures, emails, or personal information."
+            else:
+                memory_prompt = ""
+
             messages = [
-                SystemMessage(content="You are a highly capable executive AI assistant with direct access to the user's Google Workspace via the Model Context Protocol (MCP). You have tools available to interact with the Gmail API, Google Drive API, and Google Calendar API. Use these tools seamlessly to help the user schedule meetings, draft and send emails, organize files, and more. When instructed to use an attached link (like a resume), use your tools to access and read the file to execute the task smoothly."),
+                SystemMessage(content=f"You are a highly capable executive AI assistant with direct access to the user's Google Workspace via the Model Context Protocol (MCP). You have tools available to interact with the Gmail API, Google Drive API, and Google Calendar API. Use these tools seamlessly to help the user schedule meetings, draft and send emails, organize files, and more. When instructed to use an attached link (like a resume), use your tools to access and read the file to execute the task smoothly.{memory_prompt}"),
                 HumanMessage(content=request.prompt)
             ]
 

@@ -19,7 +19,11 @@ from app.graph.workflow import app as langgraph_app
 from app.models.resume import JobDescription, OptimizationHistory, Resume, ResumeVersion
 from app.models.user import User
 from app.parsers.document_parser import DocumentParserFactory
+from app.services.memory_service import MemoryService
+from app.services.llm_factory import LLMProviderFactory
+from app.core.prompts import EXTRACT_MEMORY_PROMPT
 from app.services.s3_service import S3PresignedUrlService
+import json
 
 router = APIRouter()
 
@@ -170,6 +174,45 @@ def _serialize_history_item(
     }
 
 
+async def _extract_and_save_memories(
+    user_id: str,
+    additional_prompt: str,
+    memory_service: MemoryService,
+) -> None:
+    """Extract long-term preferences from the user's prompt and store them."""
+    if not additional_prompt or len(additional_prompt.strip()) < 10:
+        return
+        
+    try:
+        provider = LLMProviderFactory.create()
+        prompt = EXTRACT_MEMORY_PROMPT.format(user_instruction=additional_prompt)
+        response_text = await provider.generate(prompt)
+        
+        cleaned = response_text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+            
+        memories = json.loads(cleaned.strip())
+        if isinstance(memories, list):
+            for m in memories:
+                if isinstance(m, dict) and "category" in m and "key" in m and "value" in m:
+                    await memory_service.add(
+                        user_id=user_id,
+                        category=m["category"],
+                        key=m["key"],
+                        value=m["value"],
+                        importance=m.get("importance", "Low"),
+                        source="Conversation"
+                    )
+    except Exception as e:
+        logger.warning(f"Failed to extract memories: {e}")
+
+
+
 @router.post("/extract")
 async def extract_resume_text(
     file: UploadFile = File(...),
@@ -228,15 +271,36 @@ async def optimize_resume(
         HTTPException: 500 when optimization, PDF generation, or persistence fails.
     """
     try:
+        # Memory processing
+        user_id_str = str(current_user.id) if hasattr(current_user, "id") else "unknown"
+        memory_service = MemoryService(db)
+        
+        # 1. Extract new memories
+        if additional_prompt:
+            await _extract_and_save_memories(user_id_str, additional_prompt, memory_service)
+            
+        # 2. Retrieve memories for optimization context
+        search_query = f"{job_description or ''} {additional_prompt or ''}".strip()
+        if search_query:
+            raw_memories = await memory_service.search(user_id_str, search_query, limit=10)
+        else:
+            raw_memories = await memory_service.list_memories(user_id_str)
+            
+        user_memories = [
+            {"category": m.category, "key": m.key, "value": m.value, "importance": m.importance}
+            for m in raw_memories
+        ]
+
         # Initial state for the LangGraph workflow
         initial_state: ResumeGraphState = {
-            "user_id": (str(current_user.id) if hasattr(current_user, "id") else "unknown"),
+            "user_id": user_id_str,
             "resume_filename": resume_filename,
             "raw_resume_text": resume_text,
             "jd_text": job_description or "",
             "additional_prompt": additional_prompt or "",
             "jd_keywords": [],
             "jd_analysis": {},
+            "user_memories": user_memories,
             "structured_resume": {},
             "optimized_resume": {},
             "pdf_path": "",

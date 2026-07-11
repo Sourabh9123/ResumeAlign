@@ -12,6 +12,7 @@ class ResumeGraphState(TypedDict):
     jd_analysis: Dict[str, Any]
     additional_prompt: str
     jd_keywords: List[str]
+    user_memories: List[Dict[str, Any]]
     optimized_resume: Dict[str, Any]
     ats_score: float
     generated_latex: str

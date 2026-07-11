@@ -79,3 +79,21 @@ export const authApi = {
         localStorage.removeItem('resume_builder_access_token');
     }
 };
+
+export const agentApi = {
+    saveOAuth: async (provider, accessToken, refreshToken = null) => {
+        const response = await apiClient.post('/agent/oauth', {
+            provider,
+            access_token: accessToken,
+            refresh_token: refreshToken
+        });
+        return response.data;
+    },
+    executeAction: async (prompt, mcpServerUrl = "https://mcp.googleapis.com/v1/workspace") => {
+        const response = await apiClient.post('/agent/execute', {
+            prompt,
+            mcp_server_url: mcpServerUrl
+        });
+        return response.data;
+    }
+};

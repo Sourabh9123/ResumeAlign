@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { resumeApi } from '../api/client';
+import { GoogleConnect } from '../components/GoogleConnect';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -346,6 +347,8 @@ export default function Dashboard() {
                 </div>
 
                 <div className="p-6 border-t border-gray-800/50 bg-[#0a0f1c]">
+                    <GoogleConnect />
+                    
                     <button 
                         onClick={handleOptimize}
                         disabled={loading || !file}

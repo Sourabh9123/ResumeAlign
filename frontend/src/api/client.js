@@ -89,10 +89,13 @@ export const agentApi = {
         });
         return response.data;
     },
-    executeAction: async (prompt, mcpServerUrl = "https://mcp.googleapis.com/v1/workspace") => {
+    checkOAuthStatus: async (provider = 'google') => {
+        const response = await apiClient.get(`/agent/oauth/status?provider=${provider}`);
+        return response.data;
+    },
+    executeAction: async (prompt) => {
         const response = await apiClient.post('/agent/execute', {
-            prompt,
-            mcp_server_url: mcpServerUrl
+            prompt
         });
         return response.data;
     }

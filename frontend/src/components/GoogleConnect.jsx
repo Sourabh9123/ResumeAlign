@@ -1,10 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { agentApi } from '../api/client';
 
 export function GoogleConnect() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const data = await agentApi.checkOAuthStatus('google');
+        setConnected(data.connected);
+      } catch (error) {
+        console.error("Failed to check OAuth status:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkStatus();
+  }, []);
 
   const login = useGoogleLogin({
     scope: 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly',
@@ -49,7 +63,7 @@ export function GoogleConnect() {
                     : 'bg-blue-600/20 text-blue-300 border border-blue-500/30 hover:bg-blue-600/30 hover:border-blue-500/50'
                 }`}
             >
-                {loading ? 'Connecting...' : 'Connect Google'}
+                {loading ? 'Checking...' : 'Connect Google'}
             </button>
         )}
     </div>

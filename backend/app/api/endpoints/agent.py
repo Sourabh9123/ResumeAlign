@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+import os
 from contextlib import AsyncExitStack
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,7 +7,7 @@ from pydantic import BaseModel
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage
-from mcp.client.sse import sse_client
+from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp.client.session import ClientSession
 from langchain_mcp_adapters.tools import load_mcp_tools
 
@@ -24,7 +25,6 @@ router = APIRouter()
 
 class AgentRequest(BaseModel):
     prompt: str
-    mcp_server_url: str = "https://mcp.googleapis.com/v1/workspace" # Example Google MCP URL
 
 class OAuthSaveRequest(BaseModel):
     provider: str
@@ -61,22 +61,37 @@ async def save_oauth_credentials(
     return {"status": "ok"}
 
 
+@router.get("/oauth/status")
+async def check_oauth_status(
+    provider: str = "google",
+    current_user: User = Depends(enforce_general_rate_limit),
+    db: AsyncSession = Depends(get_db)
+):
+    """Check if the user has an active OAuth connection for the given provider."""
+    stmt = select(OAuthAccount).where(
+        OAuthAccount.user_id == current_user.id,
+        OAuthAccount.provider == provider
+    )
+    result = await db.execute(stmt)
+    account = result.scalar_one_or_none()
+    
+    is_connected = account is not None and account.access_token is not None
+    return {"connected": is_connected}
+
+
 @router.post("/execute")
 async def execute_agent_action(
     request: AgentRequest,
     current_user: User = Depends(enforce_general_rate_limit),
     db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Execute a generic action on behalf of the user using a remote MCP server URL.
+    """Execute a generic action on behalf of the user using a local MCP server.
     
-    This endpoint connects to a Google Managed MCP server (or any SSE MCP endpoint)
+    This endpoint spawns a local Google Managed MCP server 
     using the user's provided credentials to act on their behalf.
     """
     if not settings.OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OpenAI API Key not configured")
-
-    if not request.mcp_server_url:
-        raise HTTPException(status_code=400, detail="mcp_server_url is required.")
 
     # Fetch user credentials from database
     stmt = select(OAuthAccount).where(
@@ -89,19 +104,23 @@ async def execute_agent_action(
     if not oauth_account or not oauth_account.access_token:
         raise HTTPException(status_code=401, detail="Google OAuth credentials not found for user. Please authenticate first.")
 
-    logger.info(f"Executing remote MCP agent action for user {current_user.email} at {request.mcp_server_url}")
+    logger.info(f"Executing local MCP agent action for user {current_user.email}")
 
     try:
-        # Connect to the remote Google MCP server via Server-Sent Events (SSE)
-        # Passing the user's OAuth token in the Authorization header
-        headers = {
-            "Authorization": f"Bearer {oauth_account.access_token}"
-        }
+        # We start the local python MCP server process, passing the token via env
+        env = os.environ.copy()
+        env["GOOGLE_ACCESS_TOKEN"] = oauth_account.access_token
+        
+        server_params = StdioServerParameters(
+            command="python",
+            args=["-m", "app.mcp_servers.google_workspace"],
+            env=env
+        )
         
         async with AsyncExitStack() as stack:
-            # 1. Open the SSE connection to the remote MCP server
+            # 1. Open the Stdio connection to the local MCP server
             read, write = await stack.enter_async_context(
-                sse_client(request.mcp_server_url, headers=headers)
+                stdio_client(server_params)
             )
             
             # 2. Initialize the MCP session
@@ -110,7 +129,7 @@ async def execute_agent_action(
             )
             await session.initialize()
             
-            # 3. Load the tools provided by the remote MCP server
+            # 3. Load the tools provided by the MCP server
             tools = await load_mcp_tools(session)
             
             if not tools:
@@ -153,6 +172,6 @@ async def execute_agent_action(
             return {"result": "Agent reached maximum steps without finishing."}
 
     except Exception as e:
-        logger.error(f"Remote MCP Agent execution failed: {e}", exc_info=True)
+        logger.error(f"Local MCP Agent execution failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 

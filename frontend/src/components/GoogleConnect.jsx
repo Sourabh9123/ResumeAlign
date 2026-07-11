@@ -49,8 +49,18 @@ export function GoogleConnect() {
         <p className="text-xs text-gray-400 mb-4">Connect your Google account to let the AI agent send emails or schedule events on your behalf.</p>
         
         {connected ? (
-            <div className="px-4 py-2 bg-emerald-500/10 text-emerald-400 text-xs font-bold rounded-xl border border-emerald-500/20 inline-block">
-                ✓ Google Account Connected
+            <div className="flex flex-col items-center gap-2">
+                <div className="w-full px-4 py-2 bg-emerald-500/10 text-emerald-400 text-xs font-bold rounded-xl border border-emerald-500/20 inline-block">
+                    ✓ Google Account Connected
+                </div>
+                <button 
+                    type="button"
+                    onClick={() => login()}
+                    disabled={loading}
+                    className="w-full py-2 px-4 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all bg-gray-800/60 text-gray-400 border border-gray-700/50 hover:text-gray-200 hover:bg-gray-700"
+                >
+                    {loading ? 'Refreshing...' : 'Refresh Connection'}
+                </button>
             </div>
         ) : (
             <button 

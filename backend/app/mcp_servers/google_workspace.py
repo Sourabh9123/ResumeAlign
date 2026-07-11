@@ -54,12 +54,38 @@ async def search_emails(query: str, max_results: int = 5) -> str:
                 
         return "\n".join(results)
 
+from email.message import EmailMessage
+
+async def _build_email_payload(to: str, subject: str, body: str, attachment_url: str = None) -> str:
+    msg = EmailMessage()
+    msg['To'] = to
+    msg['Subject'] = subject
+    msg.set_content(body)
+    
+    if attachment_url:
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.get(attachment_url, follow_redirects=True)
+                if res.status_code == 200:
+                    content_type = res.headers.get("content-type", "application/pdf")
+                    maintype, subtype = content_type.split("/", 1) if "/" in content_type else ("application", "octet-stream")
+                    
+                    filename = "attachment.pdf"
+                    cd = res.headers.get("content-disposition", "")
+                    if "filename=" in cd:
+                        filename = cd.split("filename=")[-1].strip('"').strip("'")
+                    
+                    msg.add_attachment(res.content, maintype=maintype, subtype=subtype, filename=filename)
+        except Exception as e:
+            print(f"Warning: Failed to fetch attachment from {attachment_url}: {e}")
+            
+    return base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+
 @mcp.tool()
-async def draft_email(to: str, subject: str, body: str) -> str:
-    """Draft an email in the user's Gmail account without sending it."""
+async def draft_email(to: str, subject: str, body: str, attachment_url: str = None) -> str:
+    """Draft an email in the user's Gmail account without sending it. You can optionally attach a file by providing a direct URL."""
     async with httpx.AsyncClient() as client:
-        message = f"To: {to}\r\nSubject: {subject}\r\n\r\n{body}"
-        encoded_message = base64.urlsafe_b64encode(message.encode("utf-8")).decode("utf-8")
+        encoded_message = await _build_email_payload(to, subject, body, attachment_url)
         
         url = "https://gmail.googleapis.com/gmail/v1/users/me/drafts"
         payload = {
@@ -77,11 +103,10 @@ async def draft_email(to: str, subject: str, body: str) -> str:
             return f"Failed to create draft: {response.status_code} - {response.text}"
 
 @mcp.tool()
-async def send_email(to: str, subject: str, body: str) -> str:
-    """Send an email directly from the user's Gmail account. Use this during execution mode."""
+async def send_email(to: str, subject: str, body: str, attachment_url: str = None) -> str:
+    """Send an email directly from the user's Gmail account. Use this during execution mode. You can optionally attach a file by providing a direct URL."""
     async with httpx.AsyncClient() as client:
-        message = f"To: {to}\r\nSubject: {subject}\r\n\r\n{body}"
-        encoded_message = base64.urlsafe_b64encode(message.encode("utf-8")).decode("utf-8")
+        encoded_message = await _build_email_payload(to, subject, body, attachment_url)
         
         url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
         payload = {

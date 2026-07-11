@@ -50,13 +50,16 @@ async def _create_download_token(db: AsyncSession) -> str:
 
 
 def _safe_download_filename(prefix: Optional[str], unique_value: str) -> str:
-    """Build a browser download filename from a resume title and unique token."""
-    cleaned_prefix = re.sub(r"[^A-Za-z0-9]+", "-", prefix or "").strip("-").lower()
-    if cleaned_prefix.endswith("-optimized"):
-        cleaned_prefix = cleaned_prefix[: -len("-optimized")]
-    cleaned_prefix = cleaned_prefix[:80].strip("-") or "resume"
-    cleaned_unique = re.sub(r"[^A-Za-z0-9]+", "", unique_value)[:16] or secrets.token_hex(6)
-    return f"{cleaned_prefix}-optimized-{cleaned_unique}.pdf"
+    """Build a browser download filename from a resume title."""
+    if prefix:
+        cleaned_prefix = re.sub(r"[^A-Za-z0-9\s_-]+", "", prefix).strip()
+        # Ensure we don't end up with an empty string
+        if not cleaned_prefix:
+            cleaned_prefix = "Resume"
+    else:
+        cleaned_prefix = "Resume"
+        
+    return f"{cleaned_prefix}.pdf"
 
 
 async def _history_download_filename(history: OptimizationHistory, db: AsyncSession) -> str:
@@ -178,8 +181,29 @@ async def _extract_and_save_memories(
     user_id: str,
     additional_prompt: str,
     memory_service: MemoryService,
+    structured_data: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Extract long-term preferences from the user's prompt and store them."""
+    """Extract long-term preferences from the user's prompt and store them, alongside personal info."""
+    # 1. Save personal information from structured resume
+    if structured_data:
+        personal_info = structured_data.get("personal_information")
+        if personal_info and isinstance(personal_info, dict):
+            for key, value in personal_info.items():
+                if value and str(value).strip():
+                    try:
+                        # Add basic info to memory automatically
+                        await memory_service.add(
+                            user_id=user_id,
+                            category="Profile",
+                            key=key.capitalize(),
+                            value=str(value),
+                            importance="High",
+                            source="Resume Upload"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to auto-save profile memory {key}: {e}")
+
+    # 2. Extract preferences from user instructions
     if not additional_prompt or len(additional_prompt.strip()) < 10:
         return
         
@@ -316,6 +340,10 @@ async def optimize_resume(
         # Run the workflow
         result = await langgraph_app.ainvoke(initial_state)
 
+        # 3. Save personal info from structured resume to long term memory
+        structured_data = result.get("optimized_resume") or result.get("structured_resume")
+        await _extract_and_save_memories(user_id_str, "", memory_service, structured_data)
+
         # Calculate a basic ATS Score if JD is provided
         ats_score = 0
         jd_keywords = result.get("jd_keywords", [])
@@ -333,8 +361,14 @@ async def optimize_resume(
             with open(pdf_path, "rb") as pdf_file:
                 pdf_base64 = base64.b64encode(pdf_file.read()).decode("utf-8")
 
-        resume_title_prefix = Path(resume_filename).stem.strip() if resume_filename else "resume"
-        resume_title = f"{resume_title_prefix} optimized"
+        structured_data_ref = result.get("optimized_resume") or result.get("structured_resume") or {}
+        personal_info = structured_data_ref.get("personal_information", {})
+        candidate_name = personal_info.get("name", "") if isinstance(personal_info, dict) else ""
+        
+        if candidate_name:
+            resume_title = candidate_name.strip()
+        else:
+            resume_title = Path(resume_filename).stem.strip() if resume_filename else "Resume"
         download_token = await _create_download_token(db)
         resume_url = f"/resume/d/{download_token}" if (pdf_path or pdf_s3_key) else None
         resume = Resume(

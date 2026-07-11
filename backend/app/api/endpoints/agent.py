@@ -272,12 +272,23 @@ async def execute_agent_action(
             memory_context = "\n".join(memory_context_lines)
             
             if memory_context:
-                memory_prompt = f"\n\nHere is what you know about the user based on their saved profile/resume:\n{memory_context}\n\nUse these details if you need to fill out forms, signatures, emails, or personal information. DO NOT use generic bracketed placeholders like [Your Name] or [Your Phone Number]."
+                memory_prompt = f"""\n\nHere is what you know about the user based on their saved profile/resume:\n{memory_context}"""
             else:
-                memory_prompt = "\n\nYou do not have the user's profile memory saved. DO NOT use bracketed placeholders like [Your Name]. Simply sign off generically or ask the user for their name if strictly required."
+                memory_prompt = "\n\nYou do not have the user's profile memory saved."
+
+            system_instructions = f"""You are a highly capable executive AI assistant with direct access to the user's Google Workspace via the Model Context Protocol (MCP). You have tools available to interact with the Gmail API, Google Drive API, and Google Calendar API. Use these tools seamlessly to help the user schedule meetings, draft and send emails, organize files, and more. When instructed to use an attached link (like a resume), use your tools to access and read the file to execute the task smoothly.
+
+CRITICAL RULES FOR OUTREACH & DRAFTING:
+1. Write highly concise, punchy, and direct cold emails. Do not write fluffy, overly formal, or long corporate emails. Get straight to the important info.
+2. DO NOT use bracketed placeholders like [Your Name] or [Recipient's Name]. If you don't know the recipient's name, just use "Hi," or "Hello,".
+3. DO NOT output markdown headers like "### Subject:" or "### Body:". Just output the raw email content or use the email tools directly.
+4. DO NOT paste raw attachment links (like http://localhost...) into the email body. If you have an attachment URL, pass it to your tools but do not show it to the recipient in text.
+5. If the user provides a comma-separated list of emails, loop through them and send/draft the email to all of them.
+6. If any tool returns an error about authentication (e.g., 401 Unauthorized, token expired, etc.), DO NOT try to fulfill the request manually. Instead, stop immediately and explicitly tell the user: 'Your Google Account connection has expired. Please click the "Refresh Connection" button in the sidebar to re-authenticate.'
+{memory_prompt}"""
 
             messages = [
-                SystemMessage(content=f"You are a highly capable executive AI assistant with direct access to the user's Google Workspace via the Model Context Protocol (MCP). You have tools available to interact with the Gmail API, Google Drive API, and Google Calendar API. Use these tools seamlessly to help the user schedule meetings, draft and send emails, organize files, and more. When instructed to use an attached link (like a resume), use your tools to access and read the file to execute the task smoothly.\n\nCRITICAL: If any tool returns an error about authentication (e.g., 401 Unauthorized, token expired, etc.), DO NOT try to fulfill the request manually or fallback to generic placeholders. Instead, stop immediately and explicitly tell the user: 'Your Google Account connection has expired. Please click the \"Refresh Connection\" button in the sidebar to re-authenticate.'{memory_prompt}"),
+                SystemMessage(content=system_instructions),
                 HumanMessage(content=request.prompt)
             ]
 

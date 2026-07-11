@@ -25,6 +25,7 @@ router = APIRouter()
 
 class AgentRequest(BaseModel):
     prompt: str
+    resume_url: Optional[str] = None
 
 class OAuthSaveRequest(BaseModel):
     provider: str
@@ -142,7 +143,30 @@ async def execute_agent_action(
             from app.services.memory_service import MemoryService
             memory_service = MemoryService(db)
             raw_memories = await memory_service.list_memories(str(current_user.id), category="Profile")
-            memory_context = "\n".join([f"- {m.key}: {m.value}" for m in raw_memories])
+            memory_context_lines = [f"- {m.key}: {m.value}" for m in raw_memories]
+            
+            if request.resume_url and "/resume/d/" in request.resume_url:
+                try:
+                    from app.models.resume import OptimizationHistory, ResumeVersion
+                    token_str = request.resume_url.split("/resume/d/")[-1].split("?")[0]
+                    hist_stmt = select(OptimizationHistory).where(OptimizationHistory.download_token == token_str)
+                    hist_res = await db.execute(hist_stmt)
+                    history = hist_res.scalar_one_or_none()
+                    if history:
+                        ver_stmt = select(ResumeVersion).where(ResumeVersion.resume_id == history.resume_id).order_by(ResumeVersion.created_at.desc())
+                        ver_res = await db.execute(ver_stmt)
+                        version = ver_res.scalars().first()
+                        if version and version.structured_data:
+                            personal_info = version.structured_data.get("personal_information", {})
+                            if personal_info:
+                                memory_context_lines.append("\nAdditional Details from Attached Resume:")
+                                for k, v in personal_info.items():
+                                    if v and isinstance(v, str):
+                                        memory_context_lines.append(f"- {k.capitalize()}: {v}")
+                except Exception as ex:
+                    logger.warning(f"Failed to fetch parsed resume details for agent context: {ex}")
+                    
+            memory_context = "\n".join(memory_context_lines)
             
             if memory_context:
                 memory_prompt = f"\n\nHere is what you know about the user based on their saved profile/resume:\n{memory_context}\n\nUse these details if you need to fill out forms, signatures, emails, or personal information. DO NOT use generic bracketed placeholders like [Your Name] or [Your Phone Number]."

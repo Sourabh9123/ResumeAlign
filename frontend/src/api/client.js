@@ -93,10 +93,10 @@ export const agentApi = {
         const response = await apiClient.get(`/agent/oauth/status?provider=${provider}`);
         return response.data;
     },
-    executeAction: async (prompt) => {
-        const response = await apiClient.post('/agent/execute', {
-            prompt
-        });
+    executeAction: async (prompt, resumeUrl = null) => {
+        const payload = { prompt };
+        if (resumeUrl) payload.resume_url = resumeUrl;
+        const response = await apiClient.post('/agent/execute', payload);
         return response.data;
     }
 };

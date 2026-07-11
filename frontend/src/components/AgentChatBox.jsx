@@ -39,7 +39,7 @@ export function AgentChatBox({ history }) {
 
             const safePrompt = `${contextPrompt}\n\nCRITICAL INSTRUCTION: Do NOT execute any tools that modify state or send data (e.g. do NOT send emails, do NOT create calendar events). Instead, ONLY draft the exact content (subject, body, recipient, event details, etc) that you intend to use and present it to me for review. DO NOT use bracketed placeholders like [Your Name] if possible; either use the injected memory or a generic sign-off.`;
 
-            const data = await agentApi.executeAction(safePrompt);
+            const data = await agentApi.executeAction(safePrompt, selectedResumeUrl);
             setDraftResult(data.result || "No draft generated.");
             setMode("review");
         } catch (err) {
@@ -69,7 +69,7 @@ export function AgentChatBox({ history }) {
             // Instruct the LLM to actually execute now using the provided draft
             const executePrompt = `Earlier I asked you to: "${contextPrompt}". \n\nI have reviewed and approved the following draft you generated:\n\n"""\n${draftResult}\n"""\n\nPlease execute the tools necessary to complete this action NOW using the approved draft content. ${bulkEmails.trim() ? "CRITICAL: You MUST use the 'send_bulk_emails' tool to send this individually to the specified list of recipients." : ""} Do not ask for confirmation again.`;
 
-            const data = await agentApi.executeAction(executePrompt);
+            const data = await agentApi.executeAction(executePrompt, selectedResumeUrl);
             setFinalResult(data.result || "Action executed successfully.");
             setMode("done");
         } catch (err) {

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage, SystemMessage
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -120,7 +120,8 @@ async def execute_agent_action(
             llm = ChatOpenAI(model=settings.OPENAI_MODEL, temperature=0).bind_tools(tools)
             
             messages = [
-                HumanMessage(content=f"You are a helpful assistant with access to Google Workspace. Please fulfill this request: {request.prompt}")
+                SystemMessage(content="You are a highly capable executive AI assistant with direct access to the user's Google Workspace via the Model Context Protocol (MCP). You have tools available to interact with the Gmail API, Google Drive API, and Google Calendar API. Use these tools seamlessly to help the user schedule meetings, draft and send emails, organize files, and more. When instructed to use an attached link (like a resume), use your tools to access and read the file to execute the task smoothly."),
+                HumanMessage(content=request.prompt)
             ]
 
             # 5. Execute the ReAct loop

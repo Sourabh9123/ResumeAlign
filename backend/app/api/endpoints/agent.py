@@ -103,7 +103,7 @@ async def upload_agent_attachment(
     # 2. Extract Text
     try:
         parser = DocumentParserFactory.get_parser(file.filename)
-        text = parser.extract_text(file_content)
+        text = await parser.extract_text(file_content)
     except Exception as e:
         logger.warning(f"Could not parse uploaded attachment: {e}")
         text = ""

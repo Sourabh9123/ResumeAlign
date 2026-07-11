@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional
 import os
 from contextlib import AsyncExitStack
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from langchain_openai import ChatOpenAI

@@ -157,12 +157,16 @@ async def execute_agent_action(
                         ver_res = await db.execute(ver_stmt)
                         version = ver_res.scalars().first()
                         if version and version.structured_data:
-                            personal_info = version.structured_data.get("personal_information", {})
+                            # Support both possible JSON key names just in case
+                            personal_info = version.structured_data.get("personal_info") or version.structured_data.get("personal_information") or {}
                             if personal_info:
                                 memory_context_lines.append("\nAdditional Details from Attached Resume:")
                                 for k, v in personal_info.items():
-                                    if v and isinstance(v, str):
-                                        memory_context_lines.append(f"- {k.capitalize()}: {v}")
+                                    if v:
+                                        if isinstance(v, list):
+                                            memory_context_lines.append(f"- {k.capitalize()}: {', '.join(v)}")
+                                        elif isinstance(v, str):
+                                            memory_context_lines.append(f"- {k.capitalize()}: {v}")
                 except Exception as ex:
                     logger.warning(f"Failed to fetch parsed resume details for agent context: {ex}")
                     

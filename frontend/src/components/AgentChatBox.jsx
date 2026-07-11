@@ -3,6 +3,7 @@ import { agentApi } from '../api/client';
 
 export function AgentChatBox({ history }) {
     const [prompt, setPrompt] = useState("");
+    const [bulkEmails, setBulkEmails] = useState("");
     const [selectedResumeUrl, setSelectedResumeUrl] = useState("");
     const [mode, setMode] = useState("idle"); // idle, drafting, review, executing, done
     const [draftResult, setDraftResult] = useState("");
@@ -13,7 +14,7 @@ export function AgentChatBox({ history }) {
         { icon: "📅", label: "Check Calendar", prompt: "What is on my calendar for today and tomorrow?" },
         { icon: "📁", label: "Find Resume", prompt: "Search my Google Drive for my latest resume or CV." },
         { icon: "✉️", label: "Recent Emails", prompt: "List my 5 most recent emails." },
-        { icon: "✍️", label: "Draft Pitch", prompt: "Draft a cold email pitching my profile to hiring@startup.com." }
+        { icon: "✍️", label: "Draft Pitch", prompt: "Draft a cold email pitching my profile for a frontend role." }
     ];
 
     const handleDraft = async () => {
@@ -30,6 +31,10 @@ export function AgentChatBox({ history }) {
                 let absUrl = selectedResumeUrl;
                 if (!absUrl.startsWith("http")) absUrl = `${API_URL}${absUrl}`;
                 contextPrompt = `${prompt}\n\nHere is a link to my resume that you should use/attach: ${absUrl}`;
+            }
+
+            if (bulkEmails.trim()) {
+                contextPrompt = `${contextPrompt}\n\nI want to send this as a mass outreach campaign to the following recipients:\n${bulkEmails}\n\nPlease draft the single email template that will be sent individually to each of them.`;
             }
 
             const safePrompt = `${contextPrompt}\n\nCRITICAL INSTRUCTION: Do NOT execute any tools that modify state or send data (e.g. do NOT send emails, do NOT create calendar events). Instead, ONLY draft the exact content (subject, body, recipient, event details, etc) that you intend to use and present it to me for review.`;
@@ -57,8 +62,12 @@ export function AgentChatBox({ history }) {
                 contextPrompt = `${prompt}\n\nResume link: ${absUrl}`;
             }
 
+            if (bulkEmails.trim()) {
+                contextPrompt = `${contextPrompt}\n\nRecipients:\n${bulkEmails}`;
+            }
+
             // Instruct the LLM to actually execute now using the provided draft
-            const executePrompt = `Earlier I asked you to: "${contextPrompt}". \n\nI have reviewed and approved the following draft you generated:\n\n"""\n${draftResult}\n"""\n\nPlease execute the tools necessary to complete this action NOW using the approved draft content. Do not ask for confirmation again.`;
+            const executePrompt = `Earlier I asked you to: "${contextPrompt}". \n\nI have reviewed and approved the following draft you generated:\n\n"""\n${draftResult}\n"""\n\nPlease execute the tools necessary to complete this action NOW using the approved draft content. ${bulkEmails.trim() ? "CRITICAL: You MUST use the 'send_bulk_emails' tool to send this individually to the specified list of recipients." : ""} Do not ask for confirmation again.`;
 
             const data = await agentApi.executeAction(executePrompt);
             setFinalResult(data.result || "Action executed successfully.");
@@ -138,13 +147,26 @@ export function AgentChatBox({ history }) {
                             <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">What would you like me to do?</label>
                             <div className="relative">
                                 <textarea 
-                                    className="w-full h-28 bg-gray-950/50 border border-gray-700/80 rounded-xl p-4 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-purple-500/50 resize-none placeholder-gray-600 shadow-inner custom-scrollbar"
-                                    placeholder="e.g. 'Draft a cold email to hiring@startup.com pitching me for the frontend role and attach my resume.'"
+                                    className="w-full h-24 bg-gray-950/50 border border-gray-700/80 rounded-xl p-4 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-purple-500/50 resize-none placeholder-gray-600 shadow-inner custom-scrollbar"
+                                    placeholder="e.g. 'Draft a cold email pitching me for the frontend role...'"
                                     value={prompt}
                                     onChange={(e) => setPrompt(e.target.value)}
                                 />
                                 <div className="absolute bottom-3 right-3 text-[10px] font-bold text-gray-600 uppercase tracking-widest bg-gray-900 px-2 py-1 rounded">Shift + Enter for new line</div>
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center justify-between">
+                                <span>Mass Outreach Recipients (Optional)</span>
+                                <span className="text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded">BETA</span>
+                            </label>
+                            <textarea 
+                                className="w-full h-20 bg-gray-950/50 border border-gray-700/80 rounded-xl p-3 text-sm text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500/50 resize-none placeholder-gray-600 shadow-inner custom-scrollbar leading-relaxed"
+                                placeholder="Paste a comma-separated list of emails or emails on new lines (e.g. hr1@company.com, hr2@startup.com)"
+                                value={bulkEmails}
+                                onChange={(e) => setBulkEmails(e.target.value)}
+                            />
                         </div>
 
                         <button

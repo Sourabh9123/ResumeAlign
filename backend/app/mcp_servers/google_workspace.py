@@ -121,6 +121,34 @@ async def send_email(to: str, subject: str, body: str, attachment_url: str = Non
         else:
             return f"Failed to send email: {response.status_code} - {response.text}"
 
+@mcp.tool()
+async def send_bulk_emails(to_emails: str, subject: str, body: str, attachment_url: str = None) -> str:
+    """Send the exact same email individually to a comma-separated list of email addresses. Use this for mass outreach campaigns."""
+    import asyncio
+    emails = [e.strip() for e in to_emails.replace('\n', ',').split(",") if e.strip()]
+    if not emails:
+        return "No valid email addresses provided."
+        
+    success_count = 0
+    errors = []
+    
+    async with httpx.AsyncClient() as client:
+        for to in emails:
+            encoded_message = await _build_email_payload(to, subject, body, attachment_url)
+            url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+            payload = {"raw": encoded_message}
+            
+            response = await client.post(url, headers=get_headers(), json=payload)
+            if response.status_code == 200:
+                success_count += 1
+            else:
+                errors.append(f"{to}: {response.status_code}")
+                
+            await asyncio.sleep(0.5) # rate limit protection
+            
+    if errors:
+        return f"Sent to {success_count} emails. Errors: {', '.join(errors)}"
+    return f"Successfully sent bulk emails to {success_count} recipients."
 
 # ====================
 # GOOGLE CALENDAR TOOLS

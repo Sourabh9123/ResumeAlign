@@ -48,7 +48,8 @@ async def save_oauth_credentials(
 
     if account:
         account.access_token = request.access_token
-        account.refresh_token = request.refresh_token
+        if request.refresh_token is not None:
+            account.refresh_token = request.refresh_token
     else:
         account = OAuthAccount(
             user_id=current_user.id,

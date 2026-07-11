@@ -22,11 +22,13 @@ export function GoogleConnect() {
 
   const login = useGoogleLogin({
     scope: 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.readonly',
+    prompt: 'consent',
     onSuccess: async (tokenResponse) => {
       setLoading(true);
       try {
         await agentApi.saveOAuth('google', tokenResponse.access_token, tokenResponse.refresh_token);
         setConnected(true);
+        alert("Connection refreshed successfully!");
       } catch (error) {
         console.error("Failed to save OAuth token", error);
         alert("Failed to connect Google account.");

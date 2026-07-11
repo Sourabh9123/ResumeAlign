@@ -64,21 +64,29 @@ async def save_oauth_credentials(
 @router.post("/upload")
 async def upload_agent_attachment(
     file: UploadFile = File(...),
-    current_user: User = Depends(enforce_general_rate_limit)
+    current_user: User = Depends(enforce_general_rate_limit),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Upload a file directly to S3 for agent attachments and return a presigned URL."""
+    """Upload a file, parse its contents, and save it as a Resume in the database so the Agent can access its structured data."""
     from app.services.s3_service import S3PresignedUrlService
+    from app.parsers.document_parser import DocumentParserFactory
+    from app.services.llm_factory import LLMProviderFactory
+    from app.core.prompts import PARSE_RESUME_PROMPT
+    from app.models.resume import Resume, ResumeVersion, OptimizationHistory
+    from app.api.endpoints.resume import _create_download_token
     import boto3
     import secrets
+    import json
     
+    file_content = await file.read()
+    
+    # 1. Upload Original to S3
     s3_client = boto3.client(
         "s3",
         aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
         region_name=settings.AWS_REGION,
     )
-    
-    file_content = await file.read()
     object_key = f"agent-attachments/{current_user.id}/{secrets.token_urlsafe(8)}_{file.filename}"
     
     try:
@@ -92,9 +100,68 @@ async def upload_agent_attachment(
         logger.error(f"Failed to upload agent attachment: {e}")
         raise HTTPException(status_code=500, detail="Failed to upload file")
         
-    s3_service = S3PresignedUrlService()
-    signed_url = await s3_service.generate_presigned_url(object_key, expiration=3600, download_filename=file.filename)
-    return {"url": signed_url}
+    # 2. Extract Text
+    try:
+        parser = DocumentParserFactory.get_parser(file.filename)
+        text = parser.extract_text(file_content)
+    except Exception as e:
+        logger.warning(f"Could not parse uploaded attachment: {e}")
+        text = ""
+
+    structured_data = {}
+    if text.strip():
+        # 3. Extract JSON via LLM
+        try:
+            llm = LLMProviderFactory.create()
+            prompt = PARSE_RESUME_PROMPT.format(raw_text=text[:15000]) # cap length just in case
+            response_text = await llm.generate(prompt)
+            
+            cleaned = response_text.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            elif cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+                
+            structured_data = json.loads(cleaned.strip())
+        except Exception as e:
+            logger.warning(f"Failed to extract structured data from attachment: {e}")
+
+    # 4. Save to Database
+    resume = Resume(
+        user_id=current_user.id,
+        title=file.filename
+    )
+    db.add(resume)
+    await db.commit()
+    await db.refresh(resume)
+
+    version = ResumeVersion(
+        resume_id=resume.id,
+        content=text,
+        structured_data=structured_data,
+        version_number=1
+    )
+    db.add(version)
+    
+    token = await _create_download_token(db)
+    
+    history = OptimizationHistory(
+        user_id=current_user.id,
+        resume_id=resume.id,
+        jd_id=None,
+        ats_score_before=0.0,
+        ats_score_after=0.0,
+        download_token=token,
+        original_pdf_s3_key=object_key,
+        generated_pdf_s3_key=object_key # Just use the original file as the download
+    )
+    db.add(history)
+    await db.commit()
+    
+    # Return standard download token URL
+    return {"url": f"/resume/d/{token}"}
 
 
 @router.get("/oauth/status")
@@ -192,16 +259,12 @@ async def execute_agent_action(
                         ver_res = await db.execute(ver_stmt)
                         version = ver_res.scalars().first()
                         if version and version.structured_data:
-                            # Support both possible JSON key names just in case
-                            personal_info = version.structured_data.get("personal_info") or version.structured_data.get("personal_information") or {}
-                            if personal_info:
-                                memory_context_lines.append("\nAdditional Details from Attached Resume:")
-                                for k, v in personal_info.items():
-                                    if v:
-                                        if isinstance(v, list):
-                                            memory_context_lines.append(f"- {k.capitalize()}: {', '.join(v)}")
-                                        elif isinstance(v, str):
-                                            memory_context_lines.append(f"- {k.capitalize()}: {v}")
+                            memory_context_lines.append("\n--- FULL RESUME PROFILE ---")
+                            import json
+                            # We dump the entire structured JSON (personal info, experience, skills, projects, etc)
+                            # so the LLM can use this to draft highly personalized emails and pitches.
+                            memory_context_lines.append(json.dumps(version.structured_data, indent=2))
+                            memory_context_lines.append("---------------------------")
                 except Exception as ex:
                     logger.warning(f"Failed to fetch parsed resume details for agent context: {ex}")
                     

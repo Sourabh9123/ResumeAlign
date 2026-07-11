@@ -154,7 +154,6 @@ async def upload_agent_attachment(
         ats_score_before=0.0,
         ats_score_after=0.0,
         download_token=token,
-        original_pdf_s3_key=object_key,
         generated_pdf_s3_key=object_key # Just use the original file as the download
     )
     db.add(history)

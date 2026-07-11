@@ -507,8 +507,8 @@ export default function Dashboard() {
 
                 {activeTab === "agent" && (
                     <div className="h-full overflow-y-auto p-8 md:p-12 lg:p-16 custom-scrollbar animate-fade-in flex flex-col items-center">
-                        <div className="w-full max-w-4xl mx-auto">
-                            <div className="mb-10 text-center">
+                        <div className="w-full max-w-5xl mx-auto flex flex-col h-full">
+                            <div className="mb-8 text-center shrink-0">
                                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-purple-500/10 mb-4 border border-purple-500/20 shadow-lg shadow-purple-500/10">
                                     <svg className="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                                 </div>
@@ -517,7 +517,7 @@ export default function Dashboard() {
                                     Interact seamlessly with your Google Workspace. Draft emails, organize meetings, or manage files. Your agent uses your saved CV library to provide deep context.
                                 </p>
                             </div>
-                            <div className="w-full max-w-3xl mx-auto">
+                            <div className="w-full max-w-4xl mx-auto flex-1 pb-10">
                                 <AgentChatBox history={filteredHistory} />
                             </div>
                         </div>

@@ -145,9 +145,9 @@ async def execute_agent_action(
             memory_context = "\n".join([f"- {m.key}: {m.value}" for m in raw_memories])
             
             if memory_context:
-                memory_prompt = f"\n\nHere is what you know about the user based on their saved profile/resume:\n{memory_context}\n\nUse these details if you need to fill out forms, signatures, emails, or personal information."
+                memory_prompt = f"\n\nHere is what you know about the user based on their saved profile/resume:\n{memory_context}\n\nUse these details if you need to fill out forms, signatures, emails, or personal information. DO NOT use generic bracketed placeholders like [Your Name] or [Your Phone Number]."
             else:
-                memory_prompt = ""
+                memory_prompt = "\n\nYou do not have the user's profile memory saved. DO NOT use bracketed placeholders like [Your Name]. Simply sign off generically or ask the user for their name if strictly required."
 
             messages = [
                 SystemMessage(content=f"You are a highly capable executive AI assistant with direct access to the user's Google Workspace via the Model Context Protocol (MCP). You have tools available to interact with the Gmail API, Google Drive API, and Google Calendar API. Use these tools seamlessly to help the user schedule meetings, draft and send emails, organize files, and more. When instructed to use an attached link (like a resume), use your tools to access and read the file to execute the task smoothly.{memory_prompt}"),

@@ -30,14 +30,14 @@ export function AgentChatBox({ history }) {
                 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
                 let absUrl = selectedResumeUrl;
                 if (!absUrl.startsWith("http")) absUrl = `${API_URL}${absUrl}`;
-                contextPrompt = `${prompt}\n\nHere is a link to my resume that you should use/attach: ${absUrl}`;
+                contextPrompt = `${prompt}\n\nCRITICAL: The system has provided this resume link: ${absUrl}. You MUST use this link in the 'attachment_url' field when calling any email tools. DO NOT include this link directly in the body of the email text! The email tool will natively attach the file for you. If you do not have my name in memory, try to extract it from the resume if you can read it, or sign off naturally without bracketed placeholders like [Your Name].`;
             }
 
             if (bulkEmails.trim()) {
                 contextPrompt = `${contextPrompt}\n\nI want to send this as a mass outreach campaign to the following recipients:\n${bulkEmails}\n\nPlease draft the single email template that will be sent individually to each of them.`;
             }
 
-            const safePrompt = `${contextPrompt}\n\nCRITICAL INSTRUCTION: Do NOT execute any tools that modify state or send data (e.g. do NOT send emails, do NOT create calendar events). Instead, ONLY draft the exact content (subject, body, recipient, event details, etc) that you intend to use and present it to me for review.`;
+            const safePrompt = `${contextPrompt}\n\nCRITICAL INSTRUCTION: Do NOT execute any tools that modify state or send data (e.g. do NOT send emails, do NOT create calendar events). Instead, ONLY draft the exact content (subject, body, recipient, event details, etc) that you intend to use and present it to me for review. DO NOT use bracketed placeholders like [Your Name] if possible; either use the injected memory or a generic sign-off.`;
 
             const data = await agentApi.executeAction(safePrompt);
             setDraftResult(data.result || "No draft generated.");
@@ -59,7 +59,7 @@ export function AgentChatBox({ history }) {
                 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
                 let absUrl = selectedResumeUrl;
                 if (!absUrl.startsWith("http")) absUrl = `${API_URL}${absUrl}`;
-                contextPrompt = `${prompt}\n\nResume link: ${absUrl}`;
+                contextPrompt = `${prompt}\n\nCRITICAL: Resume link: ${absUrl}. You MUST use this link in the 'attachment_url' field when calling any email tools. DO NOT include this link directly in the body of the email text! The email tool will natively attach the file for you.`;
             }
 
             if (bulkEmails.trim()) {

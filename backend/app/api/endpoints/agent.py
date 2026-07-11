@@ -131,7 +131,8 @@ async def upload_agent_attachment(
     # 4. Save to Database
     resume = Resume(
         user_id=current_user.id,
-        title=file.filename
+        title=file.filename,
+        raw_text=text
     )
     db.add(resume)
     await db.commit()
@@ -139,9 +140,8 @@ async def upload_agent_attachment(
 
     version = ResumeVersion(
         resume_id=resume.id,
-        content=text,
         structured_data=structured_data,
-        version_number=1
+        version_number="1"
     )
     db.add(version)
     

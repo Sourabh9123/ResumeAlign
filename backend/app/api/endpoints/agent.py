@@ -61,6 +61,41 @@ async def save_oauth_credentials(
     await db.commit()
     return {"status": "ok"}
 
+@router.post("/upload")
+async def upload_agent_attachment(
+    file: UploadFile = File(...),
+    current_user: User = Depends(enforce_general_rate_limit)
+):
+    """Upload a file directly to S3 for agent attachments and return a presigned URL."""
+    from app.services.s3_service import S3PresignedUrlService
+    import boto3
+    import secrets
+    
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        region_name=settings.AWS_REGION,
+    )
+    
+    file_content = await file.read()
+    object_key = f"agent-attachments/{current_user.id}/{secrets.token_urlsafe(8)}_{file.filename}"
+    
+    try:
+        s3_client.put_object(
+            Bucket=settings.AWS_S3_BUCKET,
+            Key=object_key,
+            Body=file_content,
+            ContentType=file.content_type or "application/octet-stream"
+        )
+    except Exception as e:
+        logger.error(f"Failed to upload agent attachment: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload file")
+        
+    s3_service = S3PresignedUrlService()
+    signed_url = await s3_service.generate_presigned_url(object_key, expiration=3600, download_filename=file.filename)
+    return {"url": signed_url}
+
 
 @router.get("/oauth/status")
 async def check_oauth_status(

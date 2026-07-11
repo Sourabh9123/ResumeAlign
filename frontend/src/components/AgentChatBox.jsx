@@ -9,6 +9,8 @@ export function AgentChatBox({ history }) {
     const [draftResult, setDraftResult] = useState("");
     const [finalResult, setFinalResult] = useState("");
     const [error, setError] = useState("");
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadedFileName, setUploadedFileName] = useState("");
 
     const quickActions = [
         { icon: "📅", label: "Check Calendar", prompt: "What is on my calendar for today and tomorrow?" },
@@ -16,6 +18,24 @@ export function AgentChatBox({ history }) {
         { icon: "✉️", label: "Recent Emails", prompt: "List my 5 most recent emails." },
         { icon: "✍️", label: "Draft Pitch", prompt: "Draft a cold email pitching my profile for a frontend role." }
     ];
+
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setIsUploading(true);
+        setError("");
+        try {
+            const data = await agentApi.uploadAttachment(file);
+            setSelectedResumeUrl(data.url);
+            setUploadedFileName(file.name);
+        } catch (err) {
+            console.error(err);
+            setError("Failed to upload file.");
+            setUploadedFileName("");
+        } finally {
+            setIsUploading(false);
+        }
+    };
 
     const handleDraft = async () => {
         if (!prompt.trim()) return;
@@ -129,18 +149,40 @@ export function AgentChatBox({ history }) {
 
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Attach a Resume (Optional)</label>
-                            <select
-                                className="w-full rounded-2xl border border-gray-700/80 bg-gray-900/50 p-4 text-base text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500/50 appearance-none"
-                                value={selectedResumeUrl}
-                                onChange={(e) => setSelectedResumeUrl(e.target.value)}
-                            >
-                                <option value="">-- Do not attach --</option>
-                                {history && history.filter(item => item.download_url).map(item => (
-                                    <option key={item.id} value={item.download_url}>
-                                        {item.resume_title} {item.jd_title ? `(${item.jd_title})` : ''}
-                                    </option>
-                                ))}
-                            </select>
+                            <div className="flex gap-4">
+                                <select
+                                    className="flex-1 rounded-2xl border border-gray-700/80 bg-gray-900/50 p-4 text-base text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500/50 appearance-none"
+                                    value={uploadedFileName ? "uploaded" : selectedResumeUrl}
+                                    onChange={(e) => {
+                                        setUploadedFileName("");
+                                        setSelectedResumeUrl(e.target.value);
+                                    }}
+                                >
+                                    <option value="">-- Do not attach --</option>
+                                    {uploadedFileName && <option value="uploaded">Uploaded: {uploadedFileName}</option>}
+                                    {history && history.filter(item => item.download_url).map(item => (
+                                        <option key={item.id} value={item.download_url}>
+                                            {item.resume_title} {item.jd_title ? `(${item.jd_title})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                
+                                <div className="relative flex items-center justify-center">
+                                    <input 
+                                        type="file" 
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        onChange={handleFileUpload}
+                                        disabled={isUploading}
+                                    />
+                                    <button 
+                                        type="button"
+                                        disabled={isUploading}
+                                        className="px-6 py-4 rounded-2xl font-bold text-sm tracking-wide transition-all bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 whitespace-nowrap disabled:opacity-50"
+                                    >
+                                        {isUploading ? "Uploading..." : "Upload File"}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <div>

@@ -109,6 +109,17 @@ export default function Dashboard() {
         }
     };
 
+    const handleDeleteHistory = async (id) => {
+        if (!confirm("Are you sure you want to delete this resume?")) return;
+        try {
+            await resumeApi.deleteHistory(id);
+            setHistory(prev => prev.filter(item => item.id !== id));
+        } catch (err) {
+            console.error(err);
+            alert("Failed to delete resume");
+        }
+    };
+
     useEffect(() => {
         loadHistory();
     }, []);
@@ -490,6 +501,12 @@ export default function Dashboard() {
                                                         Open CV
                                                     </a>
                                                 )}
+                                                <button
+                                                    onClick={() => handleDeleteHistory(item.id)}
+                                                    className="rounded-lg bg-red-500/10 px-3 py-2 text-xs font-bold text-red-400 hover:bg-red-500/20 transition-colors"
+                                                >
+                                                    Delete
+                                                </button>
                                             </div>
                                         </div>
                                         <div className="min-w-0">

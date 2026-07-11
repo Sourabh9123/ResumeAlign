@@ -51,6 +51,10 @@ export const resumeApi = {
     history: async (params = {}) => {
         const response = await apiClient.get('/resume/history', { params });
         return response.data;
+    },
+    deleteHistory: async (historyId) => {
+        const response = await apiClient.delete(`/resume/history/${historyId}`);
+        return response.data;
     }
 };
 
@@ -97,6 +101,14 @@ export const agentApi = {
         const payload = { prompt };
         if (resumeUrl) payload.resume_url = resumeUrl;
         const response = await apiClient.post('/agent/execute', payload);
+        return response.data;
+    },
+    uploadAttachment: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await apiClient.post('/agent/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
         return response.data;
     }
 };

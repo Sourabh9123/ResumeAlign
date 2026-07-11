@@ -510,6 +510,36 @@ async def list_resume_history(
 
     return {"items": items, "jd_options": jd_options}
 
+@router.delete("/history/{history_id}")
+async def delete_resume_history(
+    history_id: UUID,
+    current_user: User = Depends(enforce_general_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a generated resume and its optimization history.
+
+    Args:
+        history_id: UUID of the history item to delete.
+        current_user: Authenticated user.
+        db: Request-scoped async database session.
+    """
+    stmt = select(OptimizationHistory).where(
+        OptimizationHistory.id == history_id,
+        OptimizationHistory.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    history = result.scalar_one_or_none()
+    
+    if not history:
+        raise HTTPException(status_code=404, detail="Resume history item not found.")
+        
+    # Delete the history item (this cascade deletes generated files if implemented or just DB entry)
+    await db.delete(history)
+    await db.commit()
+    
+    return {"status": "ok", "message": "Resume deleted successfully"}
+
+
 
 @router.get("/d/{download_token}")
 async def download_resume_by_token(

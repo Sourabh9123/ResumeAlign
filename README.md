@@ -11,6 +11,9 @@ An AI-powered platform to optimize your resume against job descriptions using La
 - **Custom AI Instructions Pipeline**: Allows users to explicitly guide the AI's tone, focus, and structural rewrites securely without prompt injection risks.
 - **AI Optimization**: Matches and optimizes the resume specifically for the JD using LLMs (OpenAI, Anthropic, Gemini) via a resilient LangGraph workflow.
 - **CV Library**: Saves generated resumes with the job description link/text, ATS score, creation time, search, JD filtering, and timespan filtering.
+- **Agentic AI Workspace**: A dedicated chat-based workspace where an autonomous LLM agent (powered by LangChain) uses custom MCP tools to manage jobs, write drafts, and automate cold outreach.
+- **Google Workspace Integration**: Connect securely via Google OAuth to allow the AI Agent to seamlessly read/write Google Docs and draft/send emails via the Gmail API directly from the dashboard.
+- **Email Outreach Tracking**: An automated CRM-style dashboard that logs all cold emails sent by the agent, fetches active threads/replies via the Gmail API, and allows for one-click, AI-refined follow-ups to recruiters.
 - **Private S3 Resume Storage**: Uploads generated PDFs to a private S3 bucket using short object keys and stores only durable object metadata in Postgres.
 - **Lazy Presigned Downloads**: List/history APIs return short app links only. A fresh S3 presigned URL is generated only when a user clicks one specific resume.
 - **Redis Rate Limiting**: Protects auth, general API, and LLM/PDF generation endpoints with separate Redis-backed limits.
@@ -31,6 +34,13 @@ Generated PDF flow:
 3. Postgres stores the generated resume, job description metadata, S3 object key, and a short download token.
 4. The frontend history view receives only short app links like `/api/v1/resume/d/<token>`.
 5. When the user clicks one resume, the backend creates one fresh presigned URL for that object and redirects the browser.
+
+Agent Workflow:
+1. The user connects their Google Account in the frontend, storing the `access_token` securely.
+2. The user chats with the AI Agent in the Agent Workspace.
+3. The backend executes a React/LangChain agent loop, spawning a local FastMCP server as a subprocess.
+4. The FastMCP server dynamically receives the user's `access_token` and `USER_ID` via environment variables.
+5. The agent calls tools (e.g., `send_email`, `read_google_doc`) securely on behalf of the user, logging interactions automatically to the PostgreSQL database for the Email Tracker.
 
 ## Tech Stack
 
@@ -65,6 +75,7 @@ Generated PDF flow:
    VITE_API_URL=http://localhost:8000/api/v1
    DOCS_USERNAME=admin
    DOCS_PASSWORD=admin
+   VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
    ```
 
 3. Configure Postgres:
@@ -224,6 +235,11 @@ cd frontend && npm run build
 - `POST /api/v1/resume/optimize`: optimize extracted resume text against pasted JD text and optional custom instructions.
 - `GET /api/v1/resume/history`: list saved optimized resumes.
 - `GET /api/v1/resume/d/{download_token}`: open a generated resume download link.
+- `POST /api/v1/agent/execute`: Execute a chat message through the LangChain AI Agent.
+- `GET /api/v1/emails`: List all cold emails sent by the AI Agent.
+- `GET /api/v1/emails/{thread_id}/replies`: Fetch the thread context and replies from Gmail API.
+- `POST /api/v1/emails/{thread_id}/reply`: Reply to an email thread directly, optionally using AI to refine the draft.
+- `POST /api/v1/emails/suggest_reply`: Automatically generate a suggested response based on thread context.
 
 ### Current Product Notes
 

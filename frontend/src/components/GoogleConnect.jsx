@@ -21,7 +21,7 @@ export function GoogleConnect() {
   }, []);
 
   const login = useGoogleLogin({
-    scope: 'https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.readonly',
+    scope: 'https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents',
     prompt: 'consent',
     onSuccess: async (tokenResponse) => {
       setLoading(true);

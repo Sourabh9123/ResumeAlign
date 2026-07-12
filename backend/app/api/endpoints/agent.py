@@ -214,6 +214,7 @@ async def execute_agent_action(
         # We start the local python MCP server process, passing the token via env
         env = os.environ.copy()
         env["GOOGLE_ACCESS_TOKEN"] = oauth_account.access_token
+        env["USER_ID"] = str(current_user.id)
         
         server_params = StdioServerParameters(
             command="python",

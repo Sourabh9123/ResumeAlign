@@ -5,6 +5,44 @@ import httpx
 from datetime import datetime, timedelta, timezone
 from mcp.server.fastmcp import FastMCP
 
+import uuid
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+import app.db.base  # Import base to load all models including User
+from app.models.email_tracking import SentEmail
+from app.core.config import settings
+
+_async_session_maker = None
+
+def _get_session_maker():
+    global _async_session_maker
+    if _async_session_maker is None:
+        engine = create_async_engine(settings.DATABASE_URI)
+        _async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    return _async_session_maker
+
+async def _log_sent_email(to: str, subject: str, body: str, msg_id: str, thread_id: str = None):
+    import sys
+    user_id_str = os.environ.get("USER_ID")
+    if not user_id_str:
+        print("Warning: USER_ID not found in env, skipping DB logging", file=sys.stderr)
+        return
+    try:
+        session_maker = _get_session_maker()
+        async with session_maker() as session:
+            sent_email = SentEmail(
+                user_id=uuid.UUID(user_id_str),
+                recipient=to,
+                subject=subject,
+                body=body,
+                message_id=msg_id,
+                thread_id=thread_id or msg_id
+            )
+            session.add(sent_email)
+            await session.commit()
+    except Exception as e:
+        print(f"Failed to log sent email to DB: {e}", file=sys.stderr)
+
 # Create a FastMCP server instance
 mcp = FastMCP("Google Workspace Local")
 
@@ -117,7 +155,10 @@ async def send_email(to: str, subject: str, body: str, attachment_url: str = Non
         
         if response.status_code == 200:
             data = response.json()
-            return f"Email sent successfully. Message ID: {data.get('id')}"
+            msg_id = data.get('id')
+            thread_id = data.get('threadId')
+            await _log_sent_email(to, subject, body, msg_id, thread_id)
+            return f"Email sent successfully. Message ID: {msg_id}"
         else:
             return f"Failed to send email: {response.status_code} - {response.text}"
 
@@ -141,6 +182,8 @@ async def send_bulk_emails(to_emails: str, subject: str, body: str, attachment_u
             response = await client.post(url, headers=get_headers(), json=payload)
             if response.status_code == 200:
                 success_count += 1
+                data = response.json()
+                await _log_sent_email(to, subject, body, data.get('id'), data.get('threadId'))
             else:
                 errors.append(f"{to}: {response.status_code}")
                 
@@ -238,6 +281,59 @@ async def search_drive_files(query: str, max_results: int = 5) -> str:
             
         return "\n".join(results)
 
+
+# ====================
+# GOOGLE DOCS TOOLS
+# ====================
+
+@mcp.tool()
+async def create_google_doc(title: str, content: str = "") -> str:
+    """Create a new Google Doc with the specified title and initial content."""
+    async with httpx.AsyncClient() as client:
+        url = "https://docs.googleapis.com/v1/documents"
+        payload = {"title": title}
+        res = await client.post(url, headers=get_headers(), json=payload)
+        
+        if res.status_code != 200:
+            return f"Failed to create Google Doc: {res.status_code} - {res.text}"
+            
+        doc_id = res.json().get("documentId")
+        
+        if content:
+            update_url = f"https://docs.googleapis.com/v1/documents/{doc_id}:batchUpdate"
+            update_payload = {
+                "requests": [
+                    {
+                        "insertText": {
+                            "location": {"index": 1},
+                            "text": content
+                        }
+                    }
+                ]
+            }
+            await client.post(update_url, headers=get_headers(), json=update_payload)
+            
+        return f"Successfully created Google Doc. Link: https://docs.google.com/document/d/{doc_id}/edit"
+
+@mcp.tool()
+async def read_google_doc(doc_id: str) -> str:
+    """Read the plain text content of a Google Doc given its document ID (the long string in the URL)."""
+    async with httpx.AsyncClient() as client:
+        url = f"https://docs.googleapis.com/v1/documents/{doc_id}"
+        res = await client.get(url, headers=get_headers())
+        
+        if res.status_code != 200:
+            return f"Failed to read Google Doc: {res.status_code} - {res.text}"
+            
+        doc_data = res.json()
+        text = ""
+        for element in doc_data.get("body", {}).get("content", []):
+            if "paragraph" in element:
+                for p_elem in element["paragraph"].get("elements", []):
+                    if "textRun" in p_elem:
+                        text += p_elem["textRun"]["content"]
+                        
+        return text
 
 if __name__ == "__main__":
     mcp.run(transport='stdio')

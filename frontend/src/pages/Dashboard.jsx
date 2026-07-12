@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { resumeApi } from '../api/client';
 import { GoogleConnect } from '../components/GoogleConnect';
 import { AgentChatBox } from '../components/AgentChatBox';
+import { EmailTracker } from '../components/EmailTracker';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
@@ -110,13 +111,11 @@ export default function Dashboard() {
     };
 
     const handleDeleteHistory = async (id) => {
-        if (!confirm("Are you sure you want to delete this resume?")) return;
         try {
             await resumeApi.deleteHistory(id);
             setHistory(prev => prev.filter(item => item.id !== id));
         } catch (err) {
             console.error(err);
-            alert("Failed to delete resume");
         }
     };
 
@@ -204,6 +203,16 @@ export default function Dashboard() {
                     >
                         <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         <span className="hidden lg:block ml-3 font-bold text-sm tracking-wide">AI Agent Workspace</span>
+                    </button>
+
+                    <button
+                        onClick={() => setActiveTab("emails")}
+                        className={`w-full flex items-center p-3 rounded-xl transition-all duration-200 ${
+                            activeTab === "emails" ? "bg-amber-500/10 text-amber-300 border border-amber-500/20" : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 border border-transparent"
+                        }`}
+                    >
+                        <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        <span className="hidden lg:block ml-3 font-bold text-sm tracking-wide">Email Outreach</span>
                     </button>
                 </div>
 
@@ -536,6 +545,24 @@ export default function Dashboard() {
                             </div>
                             <div className="w-full max-w-4xl mx-auto flex-1 pb-10">
                                 <AgentChatBox history={filteredHistory} />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "emails" && (
+                    <div className="h-full overflow-y-auto p-8 md:p-12 lg:p-16 custom-scrollbar animate-fade-in flex flex-col items-center">
+                        <div className="w-full max-w-7xl mx-auto flex flex-col h-full">
+                            <div className="mb-8 flex justify-between items-end border-b border-gray-800/80 pb-8 shrink-0">
+                                <div>
+                                    <h2 className="text-4xl font-extrabold tracking-tight text-white mb-3">Email Outreach Tracking</h2>
+                                    <p className="text-gray-400 text-sm max-w-2xl">
+                                        Monitor cold emails sent by your AI Agent, read replies from recruiters or founders, and draft smart responses refined by AI.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="w-full flex-1 pb-10">
+                                <EmailTracker />
                             </div>
                         </div>
                     </div>

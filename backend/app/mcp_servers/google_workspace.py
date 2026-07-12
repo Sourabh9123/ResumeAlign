@@ -103,7 +103,18 @@ async def _build_email_payload(to: str, subject: str, body: str, attachment_url:
     if attachment_url:
         try:
             async with httpx.AsyncClient() as client:
-                res = await client.get(attachment_url, follow_redirects=True)
+                # Manually follow redirects to rewrite hostnames for Docker networking
+                res = await client.get(attachment_url, follow_redirects=False)
+                while res.status_code in (301, 302, 303, 307, 308):
+                    next_url = res.headers["Location"]
+                    # If the backend redirected us to localhost:9000 (which works for browsers),
+                    # we must rewrite it to minio:9000 because we are inside the Docker network.
+                    if "localhost:9000" in next_url:
+                        next_url = next_url.replace("localhost:9000", "minio:9000")
+                    # Also, if the original attachment url was a relative path or missing host, httpx handles it, 
+                    # but here next_url is fully qualified from our backend.
+                    res = await client.get(next_url, follow_redirects=False)
+                    
                 if res.status_code == 200:
                     content_type = res.headers.get("content-type", "application/pdf")
                     maintype, subtype = content_type.split("/", 1) if "/" in content_type else ("application", "octet-stream")

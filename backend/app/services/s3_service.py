@@ -32,10 +32,12 @@ class S3ClientFactory:
         """Return whether the minimum S3 settings are present."""
         return bool(self.bucket_name and settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY and settings.AWS_REGION)
 
-    def client(self):
+    def client(self, endpoint_url_override: Optional[str] = None):
         """Return an async context manager for an S3 client."""
         kwargs = {"config": self.client_config}
-        if settings.AWS_ENDPOINT_URL:
+        if endpoint_url_override:
+            kwargs["endpoint_url"] = endpoint_url_override
+        elif settings.AWS_ENDPOINT_URL:
             kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
         return self.session.client("s3", **kwargs)
 
@@ -98,8 +100,14 @@ class S3PresignedUrlService:
             logger.warning("S3 credentials or bucket not configured. Cannot generate presigned URL.")
             return None
 
+        # The signature must be calculated using the exact Host header the browser will send.
+        # If we use internal "minio:9000" for the endpoint, the signature will be invalid for "localhost:9000".
+        endpoint_override = None
+        if settings.AWS_ENDPOINT_URL and "minio:9000" in settings.AWS_ENDPOINT_URL:
+            endpoint_override = settings.AWS_ENDPOINT_URL.replace("minio:9000", "localhost:9000")
+
         try:
-            async with self.client_factory.client() as s3_client:
+            async with self.client_factory.client(endpoint_url_override=endpoint_override) as s3_client:
                 params = {"Bucket": self.bucket_name, "Key": object_name}
                 if download_filename:
                     params["ResponseContentDisposition"] = f'attachment; filename="{download_filename}"'
@@ -108,9 +116,6 @@ class S3PresignedUrlService:
                     Params=params,
                     ExpiresIn=expiration,
                 )
-                # Rewrite internal docker hostname to localhost for browser access
-                if settings.AWS_ENDPOINT_URL and "minio:" in response:
-                    response = response.replace("minio:9000", "localhost:9000")
                 return response
         except ClientError as e:
             logger.error(f"Failed to generate presigned URL: {e}")

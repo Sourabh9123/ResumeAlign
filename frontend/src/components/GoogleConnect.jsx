@@ -28,7 +28,6 @@ export function GoogleConnect() {
       try {
         await agentApi.saveOAuth('google', tokenResponse.access_token, tokenResponse.refresh_token);
         setConnected(true);
-        alert("Connection refreshed successfully!");
       } catch (error) {
         console.error("Failed to save OAuth token", error);
         alert("Failed to connect Google account.");

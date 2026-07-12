@@ -34,7 +34,10 @@ class S3ClientFactory:
 
     def client(self):
         """Return an async context manager for an S3 client."""
-        return self.session.client("s3", config=self.client_config)
+        kwargs = {"config": self.client_config}
+        if settings.AWS_ENDPOINT_URL:
+            kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
+        return self.session.client("s3", **kwargs)
 
 
 class S3StorageService:

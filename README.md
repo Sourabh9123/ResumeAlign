@@ -111,12 +111,25 @@ Agent Workflow:
 
    Alternative providers can be configured with `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` or `GEMINI_API_KEY`.
 
-5. For S3-backed private resume storage, set:
+5. Configure Private Resume Storage (S3 / MinIO):
+
+   **Option A: Local Docker MinIO (Recommended for Dev)**
+   ```env
+   AWS_ACCESS_KEY_ID=minioadmin
+   AWS_SECRET_ACCESS_KEY=minioadmin
+   AWS_REGION=us-east-1
+   AWS_S3_BUCKET=resume-builder-s3-sourabh
+   AWS_ENDPOINT_URL=http://minio:9000
+   ```
+   *Note: The included `docker-compose.yml` spins up a local MinIO container (`http://localhost:9001` for the console) and auto-creates the bucket.*
+
+   **Option B: Cloud AWS S3**
    ```env
    AWS_ACCESS_KEY_ID=your_aws_access_key
    AWS_SECRET_ACCESS_KEY=your_aws_secret_key
    AWS_REGION=ap-south-1
    AWS_S3_BUCKET=your-private-bucket
+   AWS_ENDPOINT_URL=
    ```
 
 6. Redis is required for rate limiting and cache:

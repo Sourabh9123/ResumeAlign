@@ -82,12 +82,15 @@ async def upload_agent_attachment(
     file_content = await file.read()
     
     # 1. Upload Original to S3
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=settings.AWS_REGION,
-    )
+    boto_kwargs = {
+        "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+        "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
+        "region_name": settings.AWS_REGION
+    }
+    if settings.AWS_ENDPOINT_URL:
+        boto_kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
+
+    s3_client = boto3.client("s3", **boto_kwargs)
     object_key = f"agent-attachments/{current_user.id}/{secrets.token_urlsafe(8)}_{file.filename}"
     
     try:

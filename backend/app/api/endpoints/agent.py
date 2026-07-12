@@ -87,6 +87,15 @@ async def upload_agent_attachment(
         "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
         "region_name": settings.AWS_REGION
     }
+    
+    from botocore.config import Config
+    client_config = Config(
+        region_name=settings.AWS_REGION,
+        signature_version="s3v4",
+        s3={"addressing_style": "path" if settings.AWS_ENDPOINT_URL else "virtual"},
+    )
+    boto_kwargs["config"] = client_config
+
     if settings.AWS_ENDPOINT_URL:
         boto_kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
 

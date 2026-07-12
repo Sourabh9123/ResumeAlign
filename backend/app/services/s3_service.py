@@ -108,6 +108,9 @@ class S3PresignedUrlService:
                     Params=params,
                     ExpiresIn=expiration,
                 )
+                # Rewrite internal docker hostname to localhost for browser access
+                if settings.AWS_ENDPOINT_URL and "minio:" in response:
+                    response = response.replace("minio:9000", "localhost:9000")
                 return response
         except ClientError as e:
             logger.error(f"Failed to generate presigned URL: {e}")

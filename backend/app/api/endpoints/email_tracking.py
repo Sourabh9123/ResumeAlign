@@ -23,6 +23,7 @@ class EmailResponse(BaseModel):
     sent_at: str
     thread_id: Optional[str]
     message_id: str
+    has_replies: bool = False
 
 @router.get("/", response_model=List[EmailResponse])
 async def list_sent_emails(
@@ -34,6 +35,33 @@ async def list_sent_emails(
     result = await db.execute(stmt)
     emails = result.scalars().all()
     
+    
+    replied_thread_ids = set()
+    
+    # Efficiently batch check for replies using Gmail API search
+    if emails:
+        oauth = await db.scalar(select(OAuthAccount).where(OAuthAccount.user_id == current_user.id, OAuthAccount.provider == "google"))
+        if oauth and oauth.access_token:
+            thread_ids = [e.thread_id for e in emails if e.thread_id]
+            if thread_ids:
+                # Check the 50 most recent threads to stay within reasonable query lengths
+                recent_threads = thread_ids[:50]
+                # A thread has a reply if it contains a message that is in the inbox (i.e. received)
+                q = "in:inbox {" + " ".join([f"thread:{tid}" for tid in recent_threads]) + "}"
+                try:
+                    async with httpx.AsyncClient() as client:
+                        res = await client.get(
+                            "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                            headers={"Authorization": f"Bearer {oauth.access_token}"},
+                            params={"q": q, "fields": "messages(threadId)"}
+                        )
+                        if res.status_code == 200:
+                            data = res.json()
+                            for msg in data.get("messages", []):
+                                replied_thread_ids.add(msg.get("threadId"))
+                except Exception as e:
+                    pass # Silently fail on Gmail query error, has_replies will just default to False
+
     return [
         EmailResponse(
             id=str(e.id),
@@ -42,7 +70,8 @@ async def list_sent_emails(
             body=e.body,
             sent_at=e.sent_at.isoformat(),
             thread_id=e.thread_id,
-            message_id=e.message_id
+            message_id=e.message_id,
+            has_replies=(e.thread_id in replied_thread_ids)
         )
         for e in emails
     ]

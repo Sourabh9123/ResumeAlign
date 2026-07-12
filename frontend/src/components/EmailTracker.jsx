@@ -153,10 +153,13 @@ export function EmailTracker() {
                             <div 
                                 key={email.id} 
                                 onClick={() => handleViewThread(email)}
-                                className={`p-4 border-b border-gray-800/50 cursor-pointer transition-colors ${selectedThread?.id === email.id ? 'bg-blue-500/10 border-l-4 border-l-blue-500' : 'hover:bg-gray-800/30'}`}
+                                className={`p-4 border-b border-gray-800/50 cursor-pointer transition-colors ${selectedThread?.id === email.id ? 'bg-blue-500/10 border-l-4 border-l-blue-500' : (email.has_replies ? 'bg-emerald-900/20 hover:bg-emerald-900/30 border-l-4 border-l-emerald-500' : 'hover:bg-gray-800/30')}`}
                             >
-                                <p className="text-sm font-bold text-gray-200 truncate">{email.recipient}</p>
-                                <p className="text-xs text-emerald-400 mt-1 truncate">{email.subject}</p>
+                                <div className="flex justify-between items-start">
+                                    <p className="text-sm font-bold text-gray-200 truncate">{email.recipient}</p>
+                                    {email.has_replies && <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full whitespace-nowrap ml-2 shrink-0 border border-emerald-500/30">New Reply</span>}
+                                </div>
+                                <p className={`text-xs mt-1 truncate ${email.has_replies ? 'text-emerald-300' : 'text-emerald-400'}`}>{email.subject}</p>
                                 <p className="text-xs text-gray-500 mt-1">{new Date(email.sent_at).toLocaleString()}</p>
                             </div>
                         ))}

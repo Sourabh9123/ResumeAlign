@@ -60,7 +60,7 @@ Agent Workflow:
 - At least one supported AI provider key: OpenAI, Anthropic, or Gemini
 - Optional AWS S3 bucket for private generated PDF storage
 
-> Note: the current `docker-compose.yml` starts Redis, backend, and frontend. It does **not** start a Postgres container. Set `POSTGRES_SERVER`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` to a reachable database, or add your own local Postgres service.
+> Note: The `docker-compose.yml` provides a completely localized stack including Redis, Postgres, Backend, and Frontend. You can choose to run Postgres locally or connect to a cloud database (like Neon, AWS RDS) by configuring your `.env`.
 
 ### Environment
 
@@ -78,13 +78,27 @@ Agent Workflow:
    VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
    ```
 
-3. Configure Postgres:
+3. Configure Postgres Database:
+   
+   **Option A: Local Docker Postgres (Recommended for Dev)**
    ```env
-   POSTGRES_SERVER=your-postgres-host
+   POSTGRES_SERVER=db
    POSTGRES_PORT=5432
    POSTGRES_USER=postgres
    POSTGRES_PASSWORD=postgres
    POSTGRES_DB=resume_builder
+   POSTGRES_SSLMODE=
+   ```
+   *Note: Set `POSTGRES_SERVER=db` so the backend container can talk to the local Postgres container.*
+
+   **Option B: Cloud Postgres (e.g. Neon, RDS)**
+   ```env
+   POSTGRES_SERVER=your-cloud-host.aws.neon.tech
+   POSTGRES_PORT=5432
+   POSTGRES_USER=neondb_owner
+   POSTGRES_PASSWORD=your_password
+   POSTGRES_DB=neondb
+   POSTGRES_SSLMODE=require
    ```
 
 4. Configure one AI provider:

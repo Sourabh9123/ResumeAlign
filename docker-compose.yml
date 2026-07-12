@@ -63,7 +63,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d resume_builder"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d resume_builder" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -88,13 +88,7 @@ services:
     depends_on:
       - minio
     entrypoint: >
-      /bin/sh -c "
-      sleep 5;
-      /usr/bin/mc alias set myminio http://minio:9000 ${AWS_ACCESS_KEY_ID:-minioadmin} ${AWS_SECRET_ACCESS_KEY:-minioadmin};
-      /usr/bin/mc mb myminio/${AWS_S3_BUCKET:-resume-builder-s3-sourabh} || true;
-      /usr/bin/mc anonymous set public myminio/${AWS_S3_BUCKET:-resume-builder-s3-sourabh} || true;
-      exit 0;
-      "
+      /bin/sh -c " sleep 5; /usr/bin/mc alias set myminio http://minio:9000 ${AWS_ACCESS_KEY_ID:-minioadmin} ${AWS_SECRET_ACCESS_KEY:-minioadmin}; /usr/bin/mc mb myminio/${AWS_S3_BUCKET:-resume-builder-s3-sourabh} || true; /usr/bin/mc anonymous set public myminio/${AWS_S3_BUCKET:-resume-builder-s3-sourabh} || true; exit 0; "
 
 volumes:
   redis-data:

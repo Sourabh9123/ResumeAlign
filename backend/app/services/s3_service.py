@@ -25,7 +25,7 @@ class S3ClientFactory:
         self.client_config = Config(
             region_name=settings.AWS_REGION,
             signature_version="s3v4",
-            s3={"addressing_style": "virtual"},
+            s3={"addressing_style": "path" if settings.AWS_ENDPOINT_URL else "virtual"},
         )
 
     def is_configured(self) -> bool:

@@ -107,13 +107,15 @@ async def _build_email_payload(to: str, subject: str, body: str, attachment_url:
                 res = await client.get(attachment_url, follow_redirects=False)
                 while res.status_code in (301, 302, 303, 307, 308):
                     next_url = res.headers["Location"]
+                    req_headers = {}
                     # If the backend redirected us to localhost:9000 (which works for browsers),
                     # we must rewrite it to minio:9000 because we are inside the Docker network.
                     if "localhost:9000" in next_url:
                         next_url = next_url.replace("localhost:9000", "minio:9000")
-                    # Also, if the original attachment url was a relative path or missing host, httpx handles it, 
-                    # but here next_url is fully qualified from our backend.
-                    res = await client.get(next_url, follow_redirects=False)
+                        # We must send the original Host header so the S3 cryptographic signature matches!
+                        req_headers["Host"] = "localhost:9000"
+                    
+                    res = await client.get(next_url, headers=req_headers, follow_redirects=False)
                     
                 if res.status_code == 200:
                     content_type = res.headers.get("content-type", "application/pdf")

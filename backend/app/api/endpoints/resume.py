@@ -19,7 +19,11 @@ from app.graph.workflow import app as langgraph_app
 from app.models.resume import JobDescription, OptimizationHistory, Resume, ResumeVersion
 from app.models.user import User
 from app.parsers.document_parser import DocumentParserFactory
+from app.services.memory_service import MemoryService
+from app.services.llm_factory import LLMProviderFactory
+from app.core.prompts import EXTRACT_MEMORY_PROMPT
 from app.services.s3_service import S3PresignedUrlService
+import json
 
 router = APIRouter()
 
@@ -46,13 +50,16 @@ async def _create_download_token(db: AsyncSession) -> str:
 
 
 def _safe_download_filename(prefix: Optional[str], unique_value: str) -> str:
-    """Build a browser download filename from a resume title and unique token."""
-    cleaned_prefix = re.sub(r"[^A-Za-z0-9]+", "-", prefix or "").strip("-").lower()
-    if cleaned_prefix.endswith("-optimized"):
-        cleaned_prefix = cleaned_prefix[: -len("-optimized")]
-    cleaned_prefix = cleaned_prefix[:80].strip("-") or "resume"
-    cleaned_unique = re.sub(r"[^A-Za-z0-9]+", "", unique_value)[:16] or secrets.token_hex(6)
-    return f"{cleaned_prefix}-optimized-{cleaned_unique}.pdf"
+    """Build a browser download filename from a resume title."""
+    if prefix:
+        cleaned_prefix = re.sub(r"[^A-Za-z0-9\s_-]+", "", prefix).strip()
+        # Ensure we don't end up with an empty string
+        if not cleaned_prefix:
+            cleaned_prefix = "Resume"
+    else:
+        cleaned_prefix = "Resume"
+        
+    return f"{cleaned_prefix}.pdf"
 
 
 async def _history_download_filename(history: OptimizationHistory, db: AsyncSession) -> str:
@@ -170,6 +177,66 @@ def _serialize_history_item(
     }
 
 
+async def _extract_and_save_memories(
+    user_id: str,
+    additional_prompt: str,
+    memory_service: MemoryService,
+    structured_data: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Extract long-term preferences from the user's prompt and store them, alongside personal info."""
+    # 1. Save personal information from structured resume
+    if structured_data:
+        personal_info = structured_data.get("personal_information")
+        if personal_info and isinstance(personal_info, dict):
+            for key, value in personal_info.items():
+                if value and str(value).strip():
+                    try:
+                        # Add basic info to memory automatically
+                        await memory_service.add(
+                            user_id=user_id,
+                            category="Profile",
+                            key=key.capitalize(),
+                            value=str(value),
+                            importance="High",
+                            source="Resume Upload"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to auto-save profile memory {key}: {e}")
+
+    # 2. Extract preferences from user instructions
+    if not additional_prompt or len(additional_prompt.strip()) < 10:
+        return
+        
+    try:
+        provider = LLMProviderFactory.create()
+        prompt = EXTRACT_MEMORY_PROMPT.format(user_instruction=additional_prompt)
+        response_text = await provider.generate(prompt)
+        
+        cleaned = response_text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+            
+        memories = json.loads(cleaned.strip())
+        if isinstance(memories, list):
+            for m in memories:
+                if isinstance(m, dict) and "category" in m and "key" in m and "value" in m:
+                    await memory_service.add(
+                        user_id=user_id,
+                        category=m["category"],
+                        key=m["key"],
+                        value=m["value"],
+                        importance=m.get("importance", "Low"),
+                        source="Conversation"
+                    )
+    except Exception as e:
+        logger.warning(f"Failed to extract memories: {e}")
+
+
+
 @router.post("/extract")
 async def extract_resume_text(
     file: UploadFile = File(...),
@@ -228,15 +295,36 @@ async def optimize_resume(
         HTTPException: 500 when optimization, PDF generation, or persistence fails.
     """
     try:
+        # Memory processing
+        user_id_str = str(current_user.id) if hasattr(current_user, "id") else "unknown"
+        memory_service = MemoryService(db)
+        
+        # 1. Extract new memories
+        if additional_prompt:
+            await _extract_and_save_memories(user_id_str, additional_prompt, memory_service)
+            
+        # 2. Retrieve memories for optimization context
+        search_query = f"{job_description or ''} {additional_prompt or ''}".strip()
+        if search_query:
+            raw_memories = await memory_service.search(user_id_str, search_query, limit=10)
+        else:
+            raw_memories = await memory_service.list_memories(user_id_str)
+            
+        user_memories = [
+            {"category": m.category, "key": m.key, "value": m.value, "importance": m.importance}
+            for m in raw_memories
+        ]
+
         # Initial state for the LangGraph workflow
         initial_state: ResumeGraphState = {
-            "user_id": (str(current_user.id) if hasattr(current_user, "id") else "unknown"),
+            "user_id": user_id_str,
             "resume_filename": resume_filename,
             "raw_resume_text": resume_text,
             "jd_text": job_description or "",
             "additional_prompt": additional_prompt or "",
             "jd_keywords": [],
             "jd_analysis": {},
+            "user_memories": user_memories,
             "structured_resume": {},
             "optimized_resume": {},
             "pdf_path": "",
@@ -251,6 +339,10 @@ async def optimize_resume(
 
         # Run the workflow
         result = await langgraph_app.ainvoke(initial_state)
+
+        # 3. Save personal info from structured resume to long term memory
+        structured_data = result.get("optimized_resume") or result.get("structured_resume")
+        await _extract_and_save_memories(user_id_str, "", memory_service, structured_data)
 
         # Calculate a basic ATS Score if JD is provided
         ats_score = 0
@@ -269,8 +361,14 @@ async def optimize_resume(
             with open(pdf_path, "rb") as pdf_file:
                 pdf_base64 = base64.b64encode(pdf_file.read()).decode("utf-8")
 
-        resume_title_prefix = Path(resume_filename).stem.strip() if resume_filename else "resume"
-        resume_title = f"{resume_title_prefix} optimized"
+        structured_data_ref = result.get("optimized_resume") or result.get("structured_resume") or {}
+        personal_info = structured_data_ref.get("personal_information", {})
+        candidate_name = personal_info.get("name", "") if isinstance(personal_info, dict) else ""
+        
+        if candidate_name:
+            resume_title = candidate_name.strip()
+        else:
+            resume_title = Path(resume_filename).stem.strip() if resume_filename else "Resume"
         download_token = await _create_download_token(db)
         resume_url = f"/resume/d/{download_token}" if (pdf_path or pdf_s3_key) else None
         resume = Resume(
@@ -411,6 +509,36 @@ async def list_resume_history(
             )
 
     return {"items": items, "jd_options": jd_options}
+
+@router.delete("/history/{history_id}")
+async def delete_resume_history(
+    history_id: UUID,
+    current_user: User = Depends(enforce_general_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a generated resume and its optimization history.
+
+    Args:
+        history_id: UUID of the history item to delete.
+        current_user: Authenticated user.
+        db: Request-scoped async database session.
+    """
+    stmt = select(OptimizationHistory).where(
+        OptimizationHistory.id == history_id,
+        OptimizationHistory.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    history = result.scalar_one_or_none()
+    
+    if not history:
+        raise HTTPException(status_code=404, detail="Resume history item not found.")
+        
+    # Delete the history item (this cascade deletes generated files if implemented or just DB entry)
+    await db.delete(history)
+    await db.commit()
+    
+    return {"status": "ok", "message": "Resume deleted successfully"}
+
 
 
 @router.get("/d/{download_token}")

@@ -33,8 +33,10 @@ async def lifespan(app: FastAPI):
     migrations that run outside the web process.
     """
     try:
+        from sqlalchemy import text
         logger.info("Starting up API and Initializing Database tables")
         async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             # Create all tables for testing without alembic
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables initialized successfully")

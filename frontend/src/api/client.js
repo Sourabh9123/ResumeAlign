@@ -51,6 +51,10 @@ export const resumeApi = {
     history: async (params = {}) => {
         const response = await apiClient.get('/resume/history', { params });
         return response.data;
+    },
+    deleteHistory: async (historyId) => {
+        const response = await apiClient.delete(`/resume/history/${historyId}`);
+        return response.data;
     }
 };
 
@@ -75,7 +79,67 @@ export const authApi = {
         });
         return response.data;
     },
+    forgotPassword: async (email, newPassword) => {
+        const response = await apiClient.post('/auth/forgot-password', {
+            email,
+            new_password: newPassword,
+        });
+        return response.data;
+    },
     logout: () => {
         localStorage.removeItem('resume_builder_access_token');
     }
+};
+
+export const agentApi = {
+    saveOAuth: async (provider, accessToken, refreshToken = null, expiresIn = 3600) => {
+        const response = await apiClient.post('/agent/oauth', {
+            provider,
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_in: expiresIn,
+        });
+        return response.data;
+    },
+    checkOAuthStatus: async (provider = 'google') => {
+        const response = await apiClient.get(`/agent/oauth/status?provider=${provider}`);
+        return response.data;
+    },
+    executeAction: async (prompt, resumeUrl = null) => {
+        const payload = { prompt };
+        if (resumeUrl) payload.resume_url = resumeUrl;
+        const response = await apiClient.post('/agent/execute', payload);
+        return response.data;
+    },
+    uploadAttachment: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await apiClient.post('/agent/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return response.data;
+    }
+};
+
+export const docsApi = {
+    list: async (query = '') => {
+        const response = await apiClient.get('/docs/', { params: { query } });
+        return response.data;
+    },
+    read: async (docId) => {
+        const response = await apiClient.get(`/docs/${docId}`);
+        return response.data;
+    },
+    update: async (docId, content, mode = 'replace') => {
+        const response = await apiClient.put(`/docs/${docId}`, { content, mode });
+        return response.data;
+    },
+    create: async (title, content = '') => {
+        const response = await apiClient.post('/docs/', { title, content });
+        return response.data;
+    },
+    aiRewrite: async (content, instruction) => {
+        const response = await apiClient.post('/docs/ai/rewrite', { content, instruction });
+        return response.data;
+    },
 };

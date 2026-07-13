@@ -60,6 +60,20 @@ class AuthService:
             "token_type": "bearer",
         }
 
+    async def reset_password_by_email(self, email: str, new_password: str) -> dict[str, str]:
+        """Set a new password for an account identified only by email."""
+        user = await self.users.get_by_email(email.lower())
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No account found for that email",
+            )
+
+        hashed_password = security.get_password_hash(new_password)
+        await self.users.update_password(user, hashed_password)
+        logger.info(f"Password updated for {user.email}")
+        return {"message": "Password updated successfully. You can sign in with your new password."}
+
     async def get_user_from_token(self, token: str) -> User:
         """Decode an access token and load the referenced user."""
         token_data = self.decode_token(token)

@@ -95,6 +95,7 @@ async def optimize_resume(state: ResumeGraphState) -> Dict[str, Any]:
     additional_prompt = state.get("additional_prompt", "")
     jd_keywords = state.get("jd_keywords", [])
     jd_analysis = state.get("jd_analysis", {})
+    user_memories = state.get("user_memories", [])
 
     if not structured_resume:
         raise ValueError("Missing structured_resume in state")
@@ -107,6 +108,7 @@ async def optimize_resume(state: ResumeGraphState) -> Dict[str, Any]:
         structured_resume=json.dumps(structured_resume, indent=2),
         jd_analysis=json.dumps({**jd_analysis, "keywords": jd_keywords, "jd": jd_text}),
         additional_instructions=(additional_prompt if additional_prompt else "No additional instructions provided."),
+        user_memories=json.dumps(user_memories, indent=2) if user_memories else "No memories provided.",
     )
 
     try:

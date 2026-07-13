@@ -11,6 +11,9 @@ An AI-powered platform to optimize your resume against job descriptions using La
 - **Custom AI Instructions Pipeline**: Allows users to explicitly guide the AI's tone, focus, and structural rewrites securely without prompt injection risks.
 - **AI Optimization**: Matches and optimizes the resume specifically for the JD using LLMs (OpenAI, Anthropic, Gemini) via a resilient LangGraph workflow.
 - **CV Library**: Saves generated resumes with the job description link/text, ATS score, creation time, search, JD filtering, and timespan filtering.
+- **Agentic AI Workspace**: A dedicated chat-based workspace where an autonomous LLM agent (powered by LangChain) uses custom MCP tools to manage jobs, write drafts, and automate cold outreach.
+- **Google Workspace Integration**: Connect securely via Google OAuth to allow the AI Agent to seamlessly read/write Google Docs and draft/send emails via the Gmail API directly from the dashboard.
+- **Email Outreach Tracking**: An automated CRM-style dashboard that logs all cold emails sent by the agent, fetches active threads/replies via the Gmail API, and allows for one-click, AI-refined follow-ups to recruiters.
 - **Private S3 Resume Storage**: Uploads generated PDFs to a private S3 bucket using short object keys and stores only durable object metadata in Postgres.
 - **Lazy Presigned Downloads**: List/history APIs return short app links only. A fresh S3 presigned URL is generated only when a user clicks one specific resume.
 - **Redis Rate Limiting**: Protects auth, general API, and LLM/PDF generation endpoints with separate Redis-backed limits.
@@ -32,6 +35,13 @@ Generated PDF flow:
 4. The frontend history view receives only short app links like `/api/v1/resume/d/<token>`.
 5. When the user clicks one resume, the backend creates one fresh presigned URL for that object and redirects the browser.
 
+Agent Workflow:
+1. The user connects their Google Account in the frontend, storing the `access_token` securely.
+2. The user chats with the AI Agent in the Agent Workspace.
+3. The backend executes a React/LangChain agent loop, spawning a local FastMCP server as a subprocess.
+4. The FastMCP server dynamically receives the user's `access_token` and `USER_ID` via environment variables.
+5. The agent calls tools (e.g., `send_email`, `read_google_doc`) securely on behalf of the user, logging interactions automatically to the PostgreSQL database for the Email Tracker.
+
 ## Tech Stack
 
 - **Backend**: Python 3.11, FastAPI, SQLAlchemy (Async), PostgreSQL, LangGraph, LangChain, Tesseract OCR, XeLaTeX
@@ -50,7 +60,7 @@ Generated PDF flow:
 - At least one supported AI provider key: OpenAI, Anthropic, or Gemini
 - Optional AWS S3 bucket for private generated PDF storage
 
-> Note: the current `docker-compose.yml` starts Redis, backend, and frontend. It does **not** start a Postgres container. Set `POSTGRES_SERVER`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` to a reachable database, or add your own local Postgres service.
+> Note: The `docker-compose.yml` provides a completely localized stack including Redis, Postgres, Backend, and Frontend. You can choose to run Postgres locally or connect to a cloud database (like Neon, AWS RDS) by configuring your `.env`.
 
 ### Environment
 
@@ -65,15 +75,30 @@ Generated PDF flow:
    VITE_API_URL=http://localhost:8000/api/v1
    DOCS_USERNAME=admin
    DOCS_PASSWORD=admin
+   VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id
    ```
 
-3. Configure Postgres:
+3. Configure Postgres Database:
+   
+   **Option A: Local Docker Postgres (Recommended for Dev)**
    ```env
-   POSTGRES_SERVER=your-postgres-host
+   POSTGRES_SERVER=db
    POSTGRES_PORT=5432
    POSTGRES_USER=postgres
    POSTGRES_PASSWORD=postgres
    POSTGRES_DB=resume_builder
+   POSTGRES_SSLMODE=
+   ```
+   *Note: Set `POSTGRES_SERVER=db` so the backend container can talk to the local Postgres container.*
+
+   **Option B: Cloud Postgres (e.g. Neon, RDS)**
+   ```env
+   POSTGRES_SERVER=your-cloud-host.aws.neon.tech
+   POSTGRES_PORT=5432
+   POSTGRES_USER=neondb_owner
+   POSTGRES_PASSWORD=your_password
+   POSTGRES_DB=neondb
+   POSTGRES_SSLMODE=require
    ```
 
 4. Configure one AI provider:
@@ -86,12 +111,25 @@ Generated PDF flow:
 
    Alternative providers can be configured with `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` or `GEMINI_API_KEY`.
 
-5. For S3-backed private resume storage, set:
+5. Configure Private Resume Storage (S3 / MinIO):
+
+   **Option A: Local Docker MinIO (Recommended for Dev)**
+   ```env
+   AWS_ACCESS_KEY_ID=minioadmin
+   AWS_SECRET_ACCESS_KEY=minioadmin
+   AWS_REGION=us-east-1
+   AWS_S3_BUCKET=resume-builder-s3-sourabh
+   AWS_ENDPOINT_URL=http://minio:9000
+   ```
+   *Note: The included `docker-compose.yml` spins up a local MinIO container (`http://localhost:9001` for the console) and auto-creates the bucket.*
+
+   **Option B: Cloud AWS S3**
    ```env
    AWS_ACCESS_KEY_ID=your_aws_access_key
    AWS_SECRET_ACCESS_KEY=your_aws_secret_key
    AWS_REGION=ap-south-1
    AWS_S3_BUCKET=your-private-bucket
+   AWS_ENDPOINT_URL=
    ```
 
 6. Redis is required for rate limiting and cache:
@@ -224,6 +262,11 @@ cd frontend && npm run build
 - `POST /api/v1/resume/optimize`: optimize extracted resume text against pasted JD text and optional custom instructions.
 - `GET /api/v1/resume/history`: list saved optimized resumes.
 - `GET /api/v1/resume/d/{download_token}`: open a generated resume download link.
+- `POST /api/v1/agent/execute`: Execute a chat message through the LangChain AI Agent.
+- `GET /api/v1/emails`: List all cold emails sent by the AI Agent.
+- `GET /api/v1/emails/{thread_id}/replies`: Fetch the thread context and replies from Gmail API.
+- `POST /api/v1/emails/{thread_id}/reply`: Reply to an email thread directly, optionally using AI to refine the draft.
+- `POST /api/v1/emails/suggest_reply`: Automatically generate a suggested response based on thread context.
 
 ### Current Product Notes
 

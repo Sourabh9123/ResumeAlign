@@ -25,16 +25,21 @@ class S3ClientFactory:
         self.client_config = Config(
             region_name=settings.AWS_REGION,
             signature_version="s3v4",
-            s3={"addressing_style": "virtual"},
+            s3={"addressing_style": "path" if settings.AWS_ENDPOINT_URL else "virtual"},
         )
 
     def is_configured(self) -> bool:
         """Return whether the minimum S3 settings are present."""
         return bool(self.bucket_name and settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY and settings.AWS_REGION)
 
-    def client(self):
+    def client(self, endpoint_url_override: Optional[str] = None):
         """Return an async context manager for an S3 client."""
-        return self.session.client("s3", config=self.client_config)
+        kwargs = {"config": self.client_config}
+        if endpoint_url_override:
+            kwargs["endpoint_url"] = endpoint_url_override
+        elif settings.AWS_ENDPOINT_URL:
+            kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
+        return self.session.client("s3", **kwargs)
 
 
 class S3StorageService:
@@ -95,8 +100,14 @@ class S3PresignedUrlService:
             logger.warning("S3 credentials or bucket not configured. Cannot generate presigned URL.")
             return None
 
+        # The signature must be calculated using the exact Host header the browser will send.
+        # If we use internal "minio:9000" for the endpoint, the signature will be invalid for "localhost:9000".
+        endpoint_override = None
+        if settings.AWS_ENDPOINT_URL and "minio:9000" in settings.AWS_ENDPOINT_URL:
+            endpoint_override = settings.AWS_ENDPOINT_URL.replace("minio:9000", "localhost:9000")
+
         try:
-            async with self.client_factory.client() as s3_client:
+            async with self.client_factory.client(endpoint_url_override=endpoint_override) as s3_client:
                 params = {"Bucket": self.bucket_name, "Key": object_name}
                 if download_filename:
                     params["ResponseContentDisposition"] = f'attachment; filename="{download_filename}"'

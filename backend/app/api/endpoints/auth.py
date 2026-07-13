@@ -5,7 +5,7 @@ from app.api.deps import enforce_auth_rate_limit, get_auth_service, get_current_
 from app.core.logging import logger
 from app.models.user import User
 from app.schemas.token import Token
-from app.schemas.user import UserCreate, UserResponse
+from app.schemas.user import ForgotPasswordRequest, UserCreate, UserResponse
 from app.services.auth import AuthService
 
 """Authentication endpoints for account registration, login, and session lookup."""
@@ -64,3 +64,19 @@ async def login(
     except Exception as exc:
         logger.error(f"Error during login: {str(exc)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error during login")
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    _: None = Depends(enforce_auth_rate_limit),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    """Set a new password for an account using only the account email."""
+    try:
+        return await auth_service.reset_password_by_email(body.email, body.new_password)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error during forgot password: {str(exc)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error during password reset")

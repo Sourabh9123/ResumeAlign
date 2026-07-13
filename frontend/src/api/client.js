@@ -79,17 +79,25 @@ export const authApi = {
         });
         return response.data;
     },
+    forgotPassword: async (email, newPassword) => {
+        const response = await apiClient.post('/auth/forgot-password', {
+            email,
+            new_password: newPassword,
+        });
+        return response.data;
+    },
     logout: () => {
         localStorage.removeItem('resume_builder_access_token');
     }
 };
 
 export const agentApi = {
-    saveOAuth: async (provider, accessToken, refreshToken = null) => {
+    saveOAuth: async (provider, accessToken, refreshToken = null, expiresIn = 3600) => {
         const response = await apiClient.post('/agent/oauth', {
             provider,
             access_token: accessToken,
-            refresh_token: refreshToken
+            refresh_token: refreshToken,
+            expires_in: expiresIn,
         });
         return response.data;
     },
@@ -111,4 +119,27 @@ export const agentApi = {
         });
         return response.data;
     }
+};
+
+export const docsApi = {
+    list: async (query = '') => {
+        const response = await apiClient.get('/docs/', { params: { query } });
+        return response.data;
+    },
+    read: async (docId) => {
+        const response = await apiClient.get(`/docs/${docId}`);
+        return response.data;
+    },
+    update: async (docId, content, mode = 'replace') => {
+        const response = await apiClient.put(`/docs/${docId}`, { content, mode });
+        return response.data;
+    },
+    create: async (title, content = '') => {
+        const response = await apiClient.post('/docs/', { title, content });
+        return response.data;
+    },
+    aiRewrite: async (content, instruction) => {
+        const response = await apiClient.post('/docs/ai/rewrite', { content, instruction });
+        return response.data;
+    },
 };

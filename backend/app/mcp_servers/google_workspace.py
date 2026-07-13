@@ -299,6 +299,56 @@ async def search_drive_files(query: str, max_results: int = 5) -> str:
 # GOOGLE DOCS TOOLS
 # ====================
 
+def _extract_doc_text(doc_data: dict) -> str:
+    text = ""
+    for element in doc_data.get("body", {}).get("content", []):
+        if "paragraph" in element:
+            for p_elem in element["paragraph"].get("elements", []):
+                if "textRun" in p_elem:
+                    text += p_elem["textRun"]["content"]
+    return text
+
+
+def _doc_end_index(doc_data: dict) -> int:
+    content = doc_data.get("body", {}).get("content", [])
+    if not content:
+        return 1
+    return content[-1].get("endIndex", 1)
+
+
+@mcp.tool()
+async def list_google_docs(query: str = "", max_results: int = 10) -> str:
+    """List the user's Google Docs. Optionally filter by name (e.g. 'resume', 'cover letter')."""
+    async with httpx.AsyncClient() as client:
+        url = "https://www.googleapis.com/drive/v3/files"
+        mime = "application/vnd.google-apps.document"
+        q_parts = [f"mimeType='{mime}'", "trashed=false"]
+        if query.strip():
+            safe = query.replace("'", "\\'")
+            q_parts.append(f"name contains '{safe}'")
+        params = {
+            "q": " and ".join(q_parts),
+            "pageSize": max_results,
+            "orderBy": "modifiedTime desc",
+            "fields": "files(id, name, modifiedTime, webViewLink)"
+        }
+        response = await client.get(url, headers=get_headers(), params=params)
+        if response.status_code != 200:
+            return f"Error listing Google Docs: {response.status_code} - {response.text}"
+
+        files = response.json().get("files", [])
+        if not files:
+            return "No Google Docs found."
+
+        results = []
+        for f in files:
+            results.append(
+                f"Name: {f.get('name')} | ID: {f.get('id')} | "
+                f"Modified: {f.get('modifiedTime')} | Link: {f.get('webViewLink')}"
+            )
+        return "\n".join(results)
+
+
 @mcp.tool()
 async def create_google_doc(title: str, content: str = "") -> str:
     """Create a new Google Doc with the specified title and initial content."""
@@ -338,15 +388,70 @@ async def read_google_doc(doc_id: str) -> str:
         if res.status_code != 200:
             return f"Failed to read Google Doc: {res.status_code} - {res.text}"
             
+        return _extract_doc_text(res.json()) or "(Document is empty)"
+
+
+@mcp.tool()
+async def update_google_doc(doc_id: str, content: str, mode: str = "replace") -> str:
+    """Update an existing Google Doc. mode='replace' overwrites all body text; mode='append' adds content at the end."""
+    mode = (mode or "replace").strip().lower()
+    if mode not in ("replace", "append"):
+        return "Invalid mode. Use 'replace' or 'append'."
+    if not content:
+        return "Content cannot be empty."
+
+    async with httpx.AsyncClient() as client:
+        url = f"https://docs.googleapis.com/v1/documents/{doc_id}"
+        res = await client.get(url, headers=get_headers())
+        if res.status_code != 200:
+            return f"Failed to read Google Doc before update: {res.status_code} - {res.text}"
+
         doc_data = res.json()
-        text = ""
-        for element in doc_data.get("body", {}).get("content", []):
-            if "paragraph" in element:
-                for p_elem in element["paragraph"].get("elements", []):
-                    if "textRun" in p_elem:
-                        text += p_elem["textRun"]["content"]
-                        
-        return text
+        end_index = _doc_end_index(doc_data)
+        requests = []
+
+        if mode == "replace":
+            # Body always has a trailing newline; delete everything except the final sentinel char.
+            if end_index > 2:
+                requests.append({
+                    "deleteContentRange": {
+                        "range": {"startIndex": 1, "endIndex": end_index - 1}
+                    }
+                })
+            requests.append({
+                "insertText": {
+                    "location": {"index": 1},
+                    "text": content if content.endswith("\n") else content + "\n"
+                }
+            })
+        else:
+            insert_at = max(end_index - 1, 1)
+            prefix = "\n" if end_index > 2 else ""
+            requests.append({
+                "insertText": {
+                    "location": {"index": insert_at},
+                    "text": prefix + content
+                }
+            })
+
+        update_url = f"https://docs.googleapis.com/v1/documents/{doc_id}:batchUpdate"
+        update_res = await client.post(
+            update_url, headers=get_headers(), json={"requests": requests}
+        )
+        if update_res.status_code != 200:
+            return f"Failed to update Google Doc: {update_res.status_code} - {update_res.text}"
+
+        title = doc_data.get("title", "Untitled")
+        return (
+            f"Successfully updated Google Doc '{title}' (mode={mode}). "
+            f"Link: https://docs.google.com/document/d/{doc_id}/edit"
+        )
+
+
+@mcp.tool()
+async def append_to_google_doc(doc_id: str, content: str) -> str:
+    """Append text to the end of an existing Google Doc."""
+    return await update_google_doc(doc_id=doc_id, content=content, mode="append")
 
 if __name__ == "__main__":
     mcp.run(transport='stdio')

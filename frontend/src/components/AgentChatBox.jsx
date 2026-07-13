@@ -1,316 +1,405 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { agentApi } from '../api/client';
 
-export function AgentChatBox({ history }) {
-    const [prompt, setPrompt] = useState("");
-    const [bulkEmails, setBulkEmails] = useState("");
-    const [selectedResumeUrl, setSelectedResumeUrl] = useState("");
-    const [mode, setMode] = useState("idle"); // idle, drafting, review, executing, done
-    const [draftResult, setDraftResult] = useState("");
-    const [finalResult, setFinalResult] = useState("");
-    const [error, setError] = useState("");
-    const [isUploading, setIsUploading] = useState(false);
-    const [uploadedFileName, setUploadedFileName] = useState("");
+function isEmailOutreach(prompt, bulkEmails) {
+    if (bulkEmails.trim()) return true;
+    const p = (prompt || '').toLowerCase();
+    return (
+        /\b(email|e-mail|mail|outreach|pitch|cold email|send (this |an? )?(email|mail)|draft (an? )?(email|mail|pitch)|message to|write (an? )?email)\b/.test(p)
+        || p.includes('recruit')
+        || p.includes('hiring manager')
+    );
+}
 
-    const quickActions = [
-        { icon: "📅", label: "Check Calendar", prompt: "What is on my calendar for today and tomorrow?" },
-        { icon: "📁", label: "Find Resume", prompt: "Search my Google Drive for my latest resume or CV." },
-        { icon: "✉️", label: "Recent Emails", prompt: "List my 5 most recent emails." },
-        { icon: "✍️", label: "Draft Pitch", prompt: "Draft a cold email pitching my profile for a frontend role." }
-    ];
+function buildContextPrompt(prompt, selectedResumeUrl, bulkEmails) {
+    let contextPrompt = prompt;
+    if (selectedResumeUrl) {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+        let absUrl = selectedResumeUrl;
+        if (!absUrl.startsWith('http')) absUrl = `${API_URL}${absUrl}`;
+        contextPrompt = `${prompt}\n\nCRITICAL: The system has provided this resume link: ${absUrl}. You MUST use this link in the 'attachment_url' field when calling any email tools. DO NOT include this link directly in the body of the email text! The email tool will natively attach the file for you. If you do not have my name in memory, try to extract it from the resume if you can read it, or sign off naturally without bracketed placeholders like [Your Name].`;
+    }
+    if (bulkEmails.trim()) {
+        contextPrompt = `${contextPrompt}\n\nI want to send this as a mass outreach campaign to the following recipients:\n${bulkEmails}\n\nPlease draft the single email template that will be sent individually to each of them.`;
+    }
+    return contextPrompt;
+}
+
+const QUICK_ACTIONS = [
+    {
+        label: 'Draft pitch',
+        hint: 'Cold email',
+        prompt: 'Draft a cold email pitching my profile for a Python developer role.',
+        email: true,
+        icon: (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+        ),
+    },
+    {
+        label: 'Calendar',
+        hint: 'Today & tomorrow',
+        prompt: 'What is on my calendar for today and tomorrow?',
+        email: false,
+        icon: (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+        ),
+    },
+    {
+        label: 'Inbox',
+        hint: 'Latest mail',
+        prompt: 'List my 5 most recent emails.',
+        email: false,
+        icon: (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>
+        ),
+    },
+];
+
+export function AgentChatBox({ history }) {
+    const [prompt, setPrompt] = useState('');
+    const [bulkEmails, setBulkEmails] = useState('');
+    const [selectedResumeUrl, setSelectedResumeUrl] = useState('');
+    const [showEmailOptions, setShowEmailOptions] = useState(false);
+    const [mode, setMode] = useState('idle');
+    const [draftResult, setDraftResult] = useState('');
+    const [finalResult, setFinalResult] = useState('');
+    const [error, setError] = useState('');
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadedFileName, setUploadedFileName] = useState('');
+
+    const needsReview = useMemo(
+        () => isEmailOutreach(prompt, bulkEmails),
+        [prompt, bulkEmails]
+    );
 
     const handleFileUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         setIsUploading(true);
-        setError("");
+        setError('');
         try {
             const data = await agentApi.uploadAttachment(file);
             setSelectedResumeUrl(data.url);
             setUploadedFileName(file.name);
+            setShowEmailOptions(true);
         } catch (err) {
             console.error(err);
-            setError("Failed to upload file.");
-            setUploadedFileName("");
+            setError('Failed to upload file.');
+            setUploadedFileName('');
         } finally {
             setIsUploading(false);
         }
     };
 
-    const handleDraft = async () => {
+    const handleQuickAction = (action) => {
+        setPrompt(action.prompt);
+        setShowEmailOptions(Boolean(action.email));
+        setError('');
+    };
+
+    const handleAskNow = async () => {
         if (!prompt.trim()) return;
-        setMode("drafting");
-        setError("");
-        setDraftResult("");
-        setFinalResult("");
-
+        setMode('answering');
+        setError('');
+        setFinalResult('');
+        setDraftResult('');
         try {
-            let contextPrompt = prompt;
-            if (selectedResumeUrl) {
-                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-                let absUrl = selectedResumeUrl;
-                if (!absUrl.startsWith("http")) absUrl = `${API_URL}${absUrl}`;
-                contextPrompt = `${prompt}\n\nCRITICAL: The system has provided this resume link: ${absUrl}. You MUST use this link in the 'attachment_url' field when calling any email tools. DO NOT include this link directly in the body of the email text! The email tool will natively attach the file for you. If you do not have my name in memory, try to extract it from the resume if you can read it, or sign off naturally without bracketed placeholders like [Your Name].`;
-            }
-
-            if (bulkEmails.trim()) {
-                contextPrompt = `${contextPrompt}\n\nI want to send this as a mass outreach campaign to the following recipients:\n${bulkEmails}\n\nPlease draft the single email template that will be sent individually to each of them.`;
-            }
-
-            const safePrompt = `${contextPrompt}\n\nCRITICAL INSTRUCTION: Do NOT execute any tools that modify state or send data (e.g. do NOT send emails, do NOT create calendar events). Instead, ONLY draft the exact content (subject, body, recipient, event details, etc) that you intend to use and present it to me for review. DO NOT use bracketed placeholders like [Your Name] if possible; either use the injected memory or a generic sign-off.`;
-
-            const data = await agentApi.executeAction(safePrompt, selectedResumeUrl);
-            setDraftResult(data.result || "No draft generated.");
-            setMode("review");
+            const contextPrompt = buildContextPrompt(prompt, selectedResumeUrl, '');
+            const runPrompt = `${contextPrompt}\n\nCRITICAL: Answer using read-only tools only (search emails, list calendar, search Drive if needed). Do NOT send emails, create calendar events, or modify any Google Docs. Return a clear, concise answer.`;
+            const data = await agentApi.executeAction(runPrompt, selectedResumeUrl);
+            setFinalResult(data.result || 'Done.');
+            setMode('done');
         } catch (err) {
             console.error(err);
-            setError(err.response?.data?.detail || "Failed to draft action.");
-            setMode("idle");
+            setError(err.response?.data?.detail || 'Failed to run action.');
+            setMode('idle');
         }
     };
 
-    const handleExecute = async () => {
-        setMode("executing");
-        setError("");
-        
+    const handleDraftEmail = async () => {
+        if (!prompt.trim()) return;
+        setMode('drafting');
+        setError('');
+        setDraftResult('');
+        setFinalResult('');
         try {
-            let contextPrompt = prompt;
-            if (selectedResumeUrl) {
-                const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-                let absUrl = selectedResumeUrl;
-                if (!absUrl.startsWith("http")) absUrl = `${API_URL}${absUrl}`;
-                contextPrompt = `${prompt}\n\nCRITICAL: Resume link: ${absUrl}. You MUST use this link in the 'attachment_url' field when calling any email tools. DO NOT include this link directly in the body of the email text! The email tool will natively attach the file for you.`;
-            }
-
-            if (bulkEmails.trim()) {
-                contextPrompt = `${contextPrompt}\n\nRecipients:\n${bulkEmails}`;
-            }
-
-            // Instruct the LLM to actually execute now using the provided draft
-            const executePrompt = `Earlier I asked you to: "${contextPrompt}". \n\nI have reviewed and approved the following draft you generated:\n\n"""\n${draftResult}\n"""\n\nPlease execute the tools necessary to complete this action NOW using the approved draft content. ${bulkEmails.trim() ? "CRITICAL: You MUST use the 'send_bulk_emails' tool to send this individually to the specified list of recipients." : ""} Do not ask for confirmation again.`;
-
-            const data = await agentApi.executeAction(executePrompt, selectedResumeUrl);
-            setFinalResult(data.result || "Action executed successfully.");
-            setMode("done");
+            const contextPrompt = buildContextPrompt(prompt, selectedResumeUrl, bulkEmails);
+            const safePrompt = `${contextPrompt}\n\nCRITICAL INSTRUCTION: You are drafting a cold outreach email. Do NOT send the email yet. Draft the exact subject, body, and recipient(s) for review. You MAY use read-only tools if needed. DO NOT use bracketed placeholders like [Your Name]; use profile memory or a natural sign-off.`;
+            const data = await agentApi.executeAction(safePrompt, selectedResumeUrl);
+            setDraftResult(data.result || 'No draft generated.');
+            setMode('review');
         } catch (err) {
             console.error(err);
-            setError(err.response?.data?.detail || "Failed to execute action.");
-            setMode("review");
+            setError(err.response?.data?.detail || 'Failed to draft email.');
+            setMode('idle');
+        }
+    };
+
+    const handlePrimary = () => {
+        if (needsReview) handleDraftEmail();
+        else handleAskNow();
+    };
+
+    const handleExecute = async () => {
+        setMode('executing');
+        setError('');
+        try {
+            const contextPrompt = buildContextPrompt(prompt, selectedResumeUrl, bulkEmails);
+            const executePrompt = `Earlier I asked you to: "${contextPrompt}".\n\nI have reviewed and approved the following draft:\n\n"""\n${draftResult}\n"""\n\nPlease send this email NOW using the approved draft. ${bulkEmails.trim() ? "CRITICAL: Use the 'send_bulk_emails' tool for the recipient list." : 'Use send_email or draft_email as appropriate — prefer send_email since I approved it.'} Do not ask for confirmation again.`;
+            const data = await agentApi.executeAction(executePrompt, selectedResumeUrl);
+            setFinalResult(data.result || 'Email sent.');
+            setMode('done');
+        } catch (err) {
+            console.error(err);
+            setError(err.response?.data?.detail || 'Failed to send email.');
+            setMode('review');
         }
     };
 
     const handleCancel = () => {
-        setMode("idle");
-        setDraftResult("");
-        setFinalResult("");
-        setError("");
+        setMode('idle');
+        setDraftResult('');
+        setFinalResult('');
+        setError('');
     };
 
     return (
-        <div className="bg-gray-900/40 p-8 md:p-12 rounded-[2.5rem] border border-gray-800/80 backdrop-blur-sm animate-fade-in flex flex-col h-full shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-purple-600/5 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-64 h-64 bg-blue-600/5 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="relative overflow-hidden rounded-[2rem] border border-violet-500/15 bg-[#0b1020]/80 shadow-[0_0_80px_-30px_rgba(139,92,246,0.45)] backdrop-blur-xl animate-fade-in">
+            {/* Atmosphere */}
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(139,92,246,0.14),_transparent_55%)]" />
+            <div className="pointer-events-none absolute -right-24 top-0 h-80 w-80 rounded-full bg-fuchsia-500/10 blur-3xl" />
+            <div className="pointer-events-none absolute -left-20 bottom-0 h-72 w-72 rounded-full bg-indigo-500/10 blur-3xl" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" />
 
-            <div className="flex items-center justify-between mb-8 relative z-10">
-                <h3 className="text-base font-bold text-gray-200 uppercase tracking-widest flex items-center">
-                    <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center mr-4 border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
-                        <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                    </div>
-                    Google Workspace Agent
-                </h3>
-            </div>
-            
-            <p className="text-sm text-gray-400 mb-8 relative z-10 leading-relaxed border-l-2 border-purple-500/30 pl-4">
-                Your AI agent automatically memorizes your resume profile (Name, Email, Phone, Skills). 
-                Ask it to draft emails, check your calendar, or search drive. Review drafts before approving!
-            </p>
-
-            <div className="space-y-8 relative z-10">
-                {/* Input Mode */}
-                {mode === "idle" && (
-                    <div className="animate-fade-in space-y-8">
-                        
-                        {/* Quick Actions */}
+            <div className="relative z-10 p-7 sm:p-9 lg:p-11">
+                {/* Brand row */}
+                <div className="mb-9 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="relative">
+                            <div className="absolute inset-0 animate-pulse rounded-2xl bg-violet-500/30 blur-md" />
+                            <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-400/30 bg-gradient-to-br from-violet-500/30 via-fuchsia-500/20 to-indigo-600/30 text-violet-100 shadow-inner">
+                                <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" /></svg>
+                            </div>
+                        </div>
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Quick Actions</label>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                {quickActions.map((action, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => setPrompt(action.prompt)}
-                                        className="flex flex-col items-center justify-center p-5 rounded-2xl bg-gray-800/40 border border-gray-700/60 hover:bg-gray-800 hover:border-purple-500/40 transition-all group"
-                                    >
-                                        <span className="text-2xl mb-2 group-hover:scale-110 transition-transform">{action.icon}</span>
-                                        <span className="text-xs text-gray-400 font-semibold text-center leading-tight group-hover:text-gray-300">{action.label}</span>
-                                    </button>
-                                ))}
+                            <div className="flex items-center gap-2.5">
+                                <h3 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">AI Agent</h3>
+                                <span className="rounded-full border border-violet-400/25 bg-violet-500/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-200">
+                                    Online
+                                </span>
+                            </div>
+                            <p className="mt-1.5 text-sm text-gray-400">Your AI agent for Gmail & Calendar</p>
+                        </div>
+                    </div>
+                    <p className="max-w-xs text-sm leading-6 text-gray-500 sm:text-right">
+                        Docs live in <span className="text-cyan-300/90">Manage Docs</span>. Emails get a review before send.
+                    </p>
+                </div>
+
+                {mode === 'idle' && (
+                    <div className="animate-fade-in space-y-7">
+                        {/* Quick chips */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            {QUICK_ACTIONS.map((action) => (
+                                <button
+                                    key={action.label}
+                                    type="button"
+                                    onClick={() => handleQuickAction(action)}
+                                    className="group flex items-center gap-3.5 rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-4 text-left transition-all hover:border-violet-400/30 hover:bg-violet-500/10"
+                                >
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-400/20 bg-violet-500/10 text-violet-200 transition-transform group-hover:scale-105">
+                                        {action.icon}
+                                    </span>
+                                    <span>
+                                        <span className="block text-sm font-semibold text-gray-100">{action.label}</span>
+                                        <span className="mt-0.5 block text-xs text-gray-500">{action.hint}</span>
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Composer */}
+                        <div className="rounded-[1.5rem] border border-white/10 bg-[#070b16]/80 p-2 shadow-inner">
+                            <textarea
+                                className="custom-scrollbar min-h-[150px] w-full resize-none bg-transparent px-4 pt-4 text-base leading-7 text-gray-100 placeholder-gray-600 focus:outline-none"
+                                placeholder="Ask the AI agent anything… e.g. Draft a cold email for a backend role at Acme"
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                            />
+
+                            <div className="flex flex-col gap-3 border-t border-white/5 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEmailOptions((v) => !v)}
+                                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+                                        showEmailOptions || selectedResumeUrl || bulkEmails
+                                            ? 'bg-violet-500/15 text-violet-200'
+                                            : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
+                                    }`}
+                                >
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                    {showEmailOptions ? 'Hide email options' : 'Email options'}
+                                    {(selectedResumeUrl || bulkEmails) && (
+                                        <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+                                    )}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handlePrimary}
+                                    disabled={!prompt.trim()}
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_30px_-8px_rgba(168,85,247,0.7)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                                >
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                    {needsReview ? 'Draft email' : 'Ask agent'}
+                                </button>
                             </div>
                         </div>
 
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Attach a Resume (Optional)</label>
-                            <div className="flex gap-4">
-                                <select
-                                    className="flex-1 rounded-2xl border border-gray-700/80 bg-gray-900/50 p-4 text-base text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500/50 appearance-none"
-                                    value={uploadedFileName ? "uploaded" : selectedResumeUrl}
-                                    onChange={(e) => {
-                                        setUploadedFileName("");
-                                        setSelectedResumeUrl(e.target.value);
-                                    }}
-                                >
-                                    <option value="">-- Do not attach --</option>
-                                    {uploadedFileName && <option value="uploaded">Uploaded: {uploadedFileName}</option>}
-                                    {history && history.filter(item => item.download_url).map(item => (
-                                        <option key={item.id} value={item.download_url}>
-                                            {item.resume_title} {item.jd_title ? `(${item.jd_title})` : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                                
-                                <div className="relative flex items-center justify-center">
-                                    <input 
-                                        type="file" 
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                        onChange={handleFileUpload}
-                                        disabled={isUploading}
+                        {showEmailOptions && (
+                            <div className="animate-fade-in space-y-5 rounded-[1.5rem] border border-violet-500/15 bg-violet-500/[0.04] p-5 sm:p-6">
+                                <div>
+                                    <label className="mb-2.5 block text-xs font-medium uppercase tracking-wide text-gray-500">Attach resume</label>
+                                    <div className="flex flex-col gap-3 sm:flex-row">
+                                        <select
+                                            className="flex-1 appearance-none rounded-xl border border-white/10 bg-[#070b16] px-4 py-3 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                                            value={uploadedFileName ? 'uploaded' : selectedResumeUrl}
+                                            onChange={(e) => {
+                                                setUploadedFileName('');
+                                                setSelectedResumeUrl(e.target.value);
+                                            }}
+                                        >
+                                            <option value="">No attachment</option>
+                                            {uploadedFileName && <option value="uploaded">Uploaded: {uploadedFileName}</option>}
+                                            {history && history.filter((item) => item.download_url).map((item) => (
+                                                <option key={item.id} value={item.download_url}>
+                                                    {item.resume_title} {item.jd_title ? `(${item.jd_title})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <div className="relative">
+                                            <input
+                                                type="file"
+                                                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                                onChange={handleFileUpload}
+                                                disabled={isUploading}
+                                            />
+                                            <button
+                                                type="button"
+                                                disabled={isUploading}
+                                                className="w-full rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-gray-200 hover:bg-white/10 disabled:opacity-50 sm:w-auto"
+                                            >
+                                                {isUploading ? 'Uploading…' : 'Upload'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="mb-2.5 block text-xs font-medium uppercase tracking-wide text-gray-500">Mass send (optional)</label>
+                                    <textarea
+                                        className="custom-scrollbar min-h-[80px] w-full rounded-xl border border-white/10 bg-[#070b16] p-4 text-sm leading-6 text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                                        placeholder="email1@company.com, email2@startup.com"
+                                        value={bulkEmails}
+                                        onChange={(e) => setBulkEmails(e.target.value)}
                                     />
-                                    <button 
-                                        type="button"
-                                        disabled={isUploading}
-                                        className="px-6 py-4 rounded-2xl font-bold text-sm tracking-wide transition-all bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 whitespace-nowrap disabled:opacity-50"
-                                    >
-                                        {isUploading ? "Uploading..." : "Upload File"}
-                                    </button>
                                 </div>
                             </div>
-                        </div>
+                        )}
 
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">What would you like me to do?</label>
-                            <div className="relative">
-                                <textarea 
-                                    className="w-full min-h-[140px] bg-gray-950/50 border border-gray-700/80 rounded-2xl p-5 text-base text-gray-200 focus:outline-none focus:ring-1 focus:ring-purple-500/50 resize-none placeholder-gray-600 shadow-inner custom-scrollbar leading-relaxed"
-                                    placeholder="e.g. 'Draft a cold email pitching me for the frontend role...'"
-                                    value={prompt}
-                                    onChange={(e) => setPrompt(e.target.value)}
-                                />
-                                <div className="absolute bottom-4 right-4 text-xs font-bold text-gray-600 uppercase tracking-widest bg-gray-900 px-3 py-1.5 rounded-lg">Shift + Enter for new line</div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center justify-between">
-                                <span>Mass Outreach Recipients (Optional)</span>
-                                <span className="text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded text-[10px]">BETA</span>
-                            </label>
-                            <textarea 
-                                className="w-full min-h-[100px] bg-gray-950/50 border border-gray-700/80 rounded-2xl p-5 text-base text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500/50 resize-none placeholder-gray-600 shadow-inner custom-scrollbar leading-relaxed"
-                                placeholder="Paste a comma-separated list of emails or emails on new lines (e.g. hr1@company.com, hr2@startup.com)"
-                                value={bulkEmails}
-                                onChange={(e) => setBulkEmails(e.target.value)}
-                            />
-                        </div>
-
-                        <button
-                            onClick={handleDraft}
-                            disabled={!prompt.trim()}
-                            className="w-full py-4 rounded-2xl font-bold text-base tracking-widest uppercase transition-all bg-gradient-to-r from-purple-600/20 to-blue-600/20 text-purple-300 border border-purple-500/40 hover:border-purple-500/70 hover:shadow-[0_0_20px_rgba(168,85,247,0.15)] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed mt-4"
-                        >
-                            <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                            Draft Action for Review
-                        </button>
+                        <p className="text-center text-xs text-gray-600">
+                            {needsReview
+                                ? 'Cold emails are drafted first — you approve before anything is sent.'
+                                : 'Calendar and inbox questions run right away.'}
+                        </p>
                     </div>
                 )}
 
-                {/* Loading State for Draft */}
-                {mode === "drafting" && (
-                    <div className="flex flex-col items-center justify-center py-16 animate-pulse bg-gray-900/50 rounded-2xl border border-gray-800">
-                        <div className="relative w-16 h-16 mb-6">
-                            <div className="absolute inset-0 rounded-full border-t-2 border-r-2 border-purple-500 animate-spin"></div>
-                            <div className="absolute inset-3 rounded-full border-b-2 border-l-2 border-blue-500 animate-spin animate-reverse"></div>
+                {(mode === 'drafting' || mode === 'answering') && (
+                    <div className="flex flex-col items-center justify-center px-6 py-24">
+                        <div className="relative mb-8 h-16 w-16">
+                            <div className="absolute inset-0 animate-ping rounded-full bg-violet-500/20" />
+                            <div className="absolute inset-0 animate-spin rounded-full border-2 border-violet-500/20 border-t-violet-400" />
+                            <div className="absolute inset-3 flex items-center justify-center text-violet-200">
+                                <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" /></svg>
+                            </div>
                         </div>
-                        <p className="text-sm text-purple-400 font-bold uppercase tracking-widest mb-2">Agent is thinking and drafting...</p>
-                        <p className="text-xs text-gray-500 max-w-sm text-center leading-relaxed">Using your profile memory and Google Workspace tools to build the perfect draft.</p>
+                        <p className="text-lg font-medium text-violet-100">
+                            {mode === 'drafting' ? 'Drafting your email…' : 'Thinking…'}
+                        </p>
+                        <p className="mt-2 text-sm text-gray-500">Connecting to your Google Workspace</p>
                     </div>
                 )}
 
-                {/* Review Mode */}
-                {mode === "review" && (
-                    <div className="animate-fade-in space-y-6">
-                        <div className="bg-[#0b0e14]/80 border border-gray-700 p-6 rounded-2xl shadow-inner">
-                            <div className="flex items-center justify-between mb-5 pb-4 border-b border-gray-800">
-                                <p className="text-sm font-bold text-purple-400 uppercase tracking-widest flex items-center">
-                                    <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                    Review Draft
-                                </p>
-                                <span className="bg-amber-500/10 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider border border-amber-500/20 animate-pulse">Needs Approval</span>
+                {mode === 'review' && (
+                    <div className="animate-fade-in space-y-5">
+                        <div className="rounded-[1.5rem] border border-amber-500/20 bg-amber-500/[0.04] p-6 sm:p-7">
+                            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                                <p className="text-base font-semibold text-white">Review draft</p>
+                                <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-200">
+                                    Not sent
+                                </span>
                             </div>
-                            <textarea 
-                                className="w-full h-64 bg-transparent text-base text-gray-300 focus:outline-none resize-none custom-scrollbar leading-relaxed"
+                            <textarea
+                                className="custom-scrollbar h-72 w-full resize-none rounded-xl border border-white/10 bg-[#070b16] p-5 text-base leading-7 text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-500/25"
                                 value={draftResult}
                                 onChange={(e) => setDraftResult(e.target.value)}
                             />
-                            <div className="mt-4 text-xs font-medium text-gray-500 flex items-center bg-gray-900/50 p-3 rounded-xl">
-                                <svg className="w-4 h-4 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                You can edit the text directly above before confirming.
-                            </div>
+                            <p className="mt-3 text-sm text-gray-500">Tweak the copy, then send when ready.</p>
                         </div>
-
-                        <div className="flex gap-4 pt-2">
+                        <div className="flex flex-col gap-3 sm:flex-row">
                             <button
+                                type="button"
                                 onClick={handleCancel}
-                                className="flex-1 py-4 rounded-2xl font-bold text-sm uppercase tracking-widest text-gray-400 bg-gray-800/50 border border-gray-700 hover:bg-gray-800 hover:text-gray-300 transition-colors"
+                                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-semibold text-gray-300 hover:bg-white/10"
                             >
                                 Cancel
                             </button>
                             <button
+                                type="button"
                                 onClick={handleExecute}
-                                className="flex-[2] py-4 rounded-2xl font-bold text-sm uppercase tracking-widest text-emerald-300 bg-emerald-600/20 border border-emerald-500/50 hover:bg-emerald-500/30 hover:text-emerald-200 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)] transition-all flex items-center justify-center"
+                                className="flex flex-[2] items-center justify-center rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-6 py-3.5 text-sm font-semibold text-white shadow-[0_0_24px_-6px_rgba(16,185,129,0.5)]"
                             >
-                                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                Confirm & Execute
+                                Send email
                             </button>
                         </div>
                     </div>
                 )}
 
-                {/* Loading State for Execute */}
-                {mode === "executing" && (
-                    <div className="flex flex-col items-center justify-center py-16 animate-pulse bg-emerald-900/10 rounded-2xl border border-emerald-900/30">
-                        <div className="w-12 h-12 rounded-full border-t-2 border-r-2 border-emerald-500 animate-spin mb-6"></div>
-                        <p className="text-sm text-emerald-400 font-bold uppercase tracking-widest">Executing action in Google Workspace...</p>
+                {mode === 'executing' && (
+                    <div className="flex flex-col items-center justify-center px-6 py-24">
+                        <div className="mb-7 h-12 w-12 animate-spin rounded-full border-2 border-emerald-500/20 border-t-emerald-400" />
+                        <p className="text-lg font-medium text-emerald-200">Sending…</p>
                     </div>
                 )}
 
-                {/* Done Mode */}
-                {mode === "done" && (
-                    <div className="animate-fade-in space-y-6">
-                        <div className="bg-emerald-900/10 border border-emerald-800 p-6 rounded-2xl">
-                            <div className="flex items-center mb-5 pb-4 border-b border-emerald-800/50">
-                                <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center mr-4 border border-emerald-500/30">
-                                    <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                {mode === 'done' && (
+                    <div className="animate-fade-in space-y-5">
+                        <div className="rounded-[1.5rem] border border-emerald-500/20 bg-emerald-500/[0.05] p-6 sm:p-7">
+                            <div className="mb-5 flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-400/30 bg-emerald-500/20 text-emerald-300">
+                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                                 </div>
-                                <p className="text-sm font-bold text-emerald-400 uppercase tracking-widest">Action Complete</p>
+                                <p className="text-base font-semibold text-emerald-200">Done</p>
                             </div>
-                            <div className="text-base text-gray-300 whitespace-pre-wrap leading-relaxed">{finalResult}</div>
+                            <div className="whitespace-pre-wrap text-base leading-7 text-gray-300">{finalResult}</div>
                         </div>
                         <button
+                            type="button"
                             onClick={handleCancel}
-                            className="w-full py-4 rounded-2xl font-bold text-sm uppercase tracking-widest text-gray-400 bg-gray-800/50 border border-gray-700 hover:bg-gray-800 hover:text-gray-300 transition-colors"
+                            className="w-full rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-semibold text-gray-300 hover:bg-white/10"
                         >
-                            Start New Action
+                            Ask again
                         </button>
                     </div>
                 )}
 
                 {error && (
-                    <div className="p-5 bg-red-900/20 border border-red-500/30 rounded-2xl animate-fade-in flex items-start">
-                        <svg className="w-6 h-6 text-red-400 mr-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        <p className="text-base text-red-400 leading-relaxed pt-0.5">{error}</p>
+                    <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-500/25 bg-red-500/10 px-5 py-4 text-sm leading-6 text-red-200">
+                        <svg className="mt-0.5 h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span>{error}</span>
                     </div>
                 )}
             </div>
         </div>
     );
 }
-

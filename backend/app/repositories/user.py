@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
@@ -15,7 +15,9 @@ class UserRepository:
 
     async def get_by_email(self, email: str) -> User | None:
         """Return a user by email address, or `None` when not found."""
-        result = await self.db.execute(select(User).where(User.email == email))
+        result = await self.db.execute(
+            select(User).where(func.lower(User.email) == email.lower())
+        )
         return result.scalars().first()
 
     async def get_by_id(self, user_id: str | UUID) -> User | None:
@@ -26,6 +28,14 @@ class UserRepository:
     async def create(self, email: str, hashed_password: str) -> User:
         """Persist a new user and return the refreshed ORM object."""
         user = User(email=email, hashed_password=hashed_password)
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def update_password(self, user: User, hashed_password: str) -> User:
+        """Update a user's password hash and return the refreshed ORM object."""
+        user.hashed_password = hashed_password
         self.db.add(user)
         await self.db.commit()
         await self.db.refresh(user)

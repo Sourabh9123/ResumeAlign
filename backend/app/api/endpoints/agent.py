@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional
 import os
 from contextlib import AsyncExitStack
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
@@ -31,6 +32,7 @@ class OAuthSaveRequest(BaseModel):
     provider: str
     access_token: str
     refresh_token: Optional[str] = None
+    expires_in: Optional[int] = 3600  # Google access tokens typically last 1 hour
 
 @router.post("/oauth")
 async def save_oauth_credentials(
@@ -39,6 +41,10 @@ async def save_oauth_credentials(
     db: AsyncSession = Depends(get_db)
 ):
     """Save or update OAuth credentials for a user."""
+    now = datetime.utcnow()
+    expires_in = request.expires_in if request.expires_in and request.expires_in > 0 else 3600
+    expires_at = now + timedelta(seconds=expires_in)
+
     stmt = select(OAuthAccount).where(
         OAuthAccount.user_id == current_user.id,
         OAuthAccount.provider == request.provider
@@ -50,17 +56,26 @@ async def save_oauth_credentials(
         account.access_token = request.access_token
         if request.refresh_token is not None:
             account.refresh_token = request.refresh_token
+        account.expires_at = expires_at
+        account.updated_at = now
     else:
         account = OAuthAccount(
             user_id=current_user.id,
             provider=request.provider,
             access_token=request.access_token,
             refresh_token=request.refresh_token,
+            expires_at=expires_at,
+            created_at=now,
+            updated_at=now,
         )
         db.add(account)
 
     await db.commit()
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "expires_at": expires_at.isoformat() + "Z",
+        "expires_in": expires_in,
+    }
 
 @router.post("/upload")
 async def upload_agent_attachment(
@@ -183,16 +198,52 @@ async def check_oauth_status(
     current_user: User = Depends(enforce_general_rate_limit),
     db: AsyncSession = Depends(get_db)
 ):
-    """Check if the user has an active OAuth connection for the given provider."""
+    """Check if the user has an active OAuth connection for the given provider.
+
+    Also returns expiry timing so the UI can countdown and highlight refresh.
+    """
     stmt = select(OAuthAccount).where(
         OAuthAccount.user_id == current_user.id,
         OAuthAccount.provider == provider
     )
     result = await db.execute(stmt)
     account = result.scalar_one_or_none()
-    
+
     is_connected = account is not None and account.access_token is not None
-    return {"connected": is_connected}
+    if not is_connected:
+        return {
+            "connected": False,
+            "expires_at": None,
+            "updated_at": None,
+            "seconds_remaining": None,
+            "token_status": "disconnected",
+        }
+
+    now = datetime.utcnow()
+    # Prefer explicit expires_at; fall back to updated_at + 1 hour for older rows.
+    expires_at = account.expires_at
+    if expires_at is None and account.updated_at is not None:
+        expires_at = account.updated_at + timedelta(hours=1)
+
+    seconds_remaining = None
+    token_status = "ok"
+    if expires_at is not None:
+        seconds_remaining = int((expires_at - now).total_seconds())
+        if seconds_remaining <= 0:
+            token_status = "expired"
+            seconds_remaining = 0
+        elif seconds_remaining <= 10 * 60:
+            token_status = "expiring"
+        else:
+            token_status = "ok"
+
+    return {
+        "connected": True,
+        "expires_at": (expires_at.isoformat() + "Z") if expires_at else None,
+        "updated_at": (account.updated_at.isoformat() + "Z") if account.updated_at else None,
+        "seconds_remaining": seconds_remaining,
+        "token_status": token_status,
+    }
 
 
 @router.post("/execute")
@@ -289,7 +340,16 @@ async def execute_agent_action(
             else:
                 memory_prompt = "\n\nYou do not have the user's profile memory saved."
 
-            system_instructions = f"""You are a highly capable AI assistant acting ON BEHALF OF A JOB SEEKER (the user). Your primary task is to draft cold outreach emails to recruiters, hiring managers, or founders to APPLY FOR JOBS and express the user's interest in open roles. UNDER NO CIRCUMSTANCES should you write an email acting as a hiring manager or recruiter looking for candidates. You are representing the candidate applying to a company. You have tools available to interact with the Gmail API, Google Drive API, and Google Calendar API via the Model Context Protocol (MCP). Use these tools seamlessly to help the user schedule meetings, draft and send emails, organize files, and more. When instructed to use an attached link (like a resume), use your tools to access and read the file to execute the task smoothly.
+            system_instructions = f"""You are a highly capable AI assistant acting ON BEHALF OF A JOB SEEKER (the user). Help them with job outreach AND with reading/writing their Google Docs (resumes, cover letters, notes, etc.). UNDER NO CIRCUMSTANCES should you write an email acting as a hiring manager or recruiter looking for candidates. You are representing the candidate applying to a company.
+
+You have MCP tools for Gmail, Google Calendar, Google Drive, and Google Docs (list, read, create, update/replace, append). Use them seamlessly. When the user asks about a Doc, prefer list_google_docs / search_drive_files to find it, then read_google_doc, then update_google_doc (replace or append) or create_google_doc as needed. When instructed to use an attached link (like a resume), use your tools to access and read the file to execute the task smoothly.
+
+CRITICAL RULES FOR GOOGLE DOCS:
+1. For Doc edits, ALWAYS read the current content first (unless creating a brand-new Doc).
+2. When rewriting, preserve the user's facts unless they ask to change them; improve clarity, structure, and impact.
+3. Prefer update_google_doc with mode='replace' for full rewrites; use mode='append' (or append_to_google_doc) to add sections.
+4. After creating or updating a Doc, always return the Google Docs link to the user.
+5. Extract doc_id from URLs like https://docs.google.com/document/d/DOC_ID/edit when the user pastes a link.
 
 CRITICAL RULES FOR OUTREACH & DRAFTING:
 1. Write highly concise, punchy, and direct cold emails. Do not write fluffy, overly formal, or long corporate emails. Get straight to the important info.

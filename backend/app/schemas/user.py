@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UserBase(BaseModel):
@@ -25,3 +25,10 @@ class UserResponse(UserBase):
         """Enable serialization from SQLAlchemy ORM model instances."""
 
         from_attributes = True
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request body to set a new password for an existing account by email."""
+
+    email: EmailStr
+    new_password: str = Field(min_length=6)

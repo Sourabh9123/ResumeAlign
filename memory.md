@@ -130,9 +130,14 @@ Agent: FastMCP stdio, ReAct loop in `/agent/execute` (max ~5 steps, OpenAI `bind
 
 ---
 
-## Deploy
+## Deploy / local run
 
-- Local/server: `make deploy` → clean + `docker compose up -d --build`.
+- Full stack: `make deploy` → clean + `docker compose up -d --build`.
+- **Backend on host:** `make install-backend` once, then `make local`  
+  - Starts Redis via Compose (`local-deps`)  
+  - Runs `uvicorn app.main:app --app-dir backend --reload` on `:8000`  
+  - Loads root `.env`; forces `REDIS_URL=redis://localhost:6379/0` (docker hostname `redis` does not resolve on host)  
+  - Postgres/S3 must be reachable from the host (current cloud Neon/S3 works; pure-Docker `POSTGRES_SERVER=db` does not without publishing db ports)
 - EC2 (`.github/workflows/deploy-to-ec2.yml`): push/`merged` PR to `main` → SSH → `~/apps/resumeai` → clone/pull `ResumeAlign` → `make deploy`.
 - After compose: `alembic upgrade head`.
 

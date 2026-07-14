@@ -5,11 +5,13 @@ PYTHON_FILES := $(shell find $(PYTHON_PATHS) -type f -name '*.py')
 BLACK_FLAGS := --workers 1 --quiet
 COMPOSE_CONTAINERS := rb_frontend rb_backend rb_redis
 
-.PHONY: help install-backend format format-check lint type-check test ci deploy deploy-clean
+.PHONY: help install-backend format format-check lint type-check test ci deploy deploy-clean local local-deps
 
 help:
 	@echo "Available targets:"
 	@echo "  install-backend  Install backend dependencies"
+	@echo "  local-deps       Start Redis via Docker (needed for local backend)"
+	@echo "  local            Run backend locally on :8000 (uvicorn --reload)"
 	@echo "  format           Format Python code with isort and black"
 	@echo "  format-check     Check Python formatting without writing changes"
 	@echo "  lint             Run Ruff linting"
@@ -53,3 +55,18 @@ deploy:
 	$(MAKE) deploy-clean
 	docker compose up -d --build
 	docker image prune -f
+
+# Run API on the host. Uses root .env; overrides Redis host (docker DNS name
+# "redis" only resolves inside Compose). Postgres/S3 from .env must be reachable
+# from your machine (e.g. Neon + AWS, or expose local db/minio ports yourself).
+local-deps:
+	docker compose up -d redis
+
+local: local-deps
+	@echo "Backend → http://localhost:8000  (docs: /docs)"
+	REDIS_URL=redis://localhost:6379/0 \
+		$(PYTHON) -m uvicorn app.main:app \
+		--app-dir $(BACKEND_DIR) \
+		--reload \
+		--host 0.0.0.0 \
+		--port 8000

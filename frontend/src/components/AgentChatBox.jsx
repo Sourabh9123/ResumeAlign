@@ -140,12 +140,12 @@ export function AgentChatBox({ history }) {
         else handleAskNow();
     };
 
-    const handleExecute = async () => {
+    const handleSave = async () => {
         setMode('executing');
         setError('');
         try {
             const contextPrompt = buildContextPrompt(prompt, selectedResumeUrl, bulkEmails);
-            const executePrompt = `Earlier I asked you to: "${contextPrompt}".\n\nI have reviewed and approved the following draft:\n\n"""\n${draftResult}\n"""\n\nPlease send this email NOW using the approved draft. ${bulkEmails.trim() ? "CRITICAL: Use the 'send_bulk_emails' tool for the recipient list." : 'Use send_email or draft_email as appropriate — prefer send_email since I approved it.'} Do not ask for confirmation again.`;
+            const executePrompt = `Earlier I asked you to: "${contextPrompt}".\n\nI have reviewed and approved the following draft:\n\n"""\n${draftResult}\n"""\n\nPlease send this email NOW using the approved draft. ${bulkEmails.trim() ? "CRITICAL: Use the 'send_bulk_emails' tool for the recipient list." : 'Use the send_email tool. Do NOT use draft_email.'} Do not ask for confirmation again.`;
             const data = await agentApi.executeAction(executePrompt, selectedResumeUrl);
             setFinalResult(data.result || 'Email sent.');
             setMode('done');
@@ -156,7 +156,23 @@ export function AgentChatBox({ history }) {
         }
     };
 
-    const handleCancel = () => {
+    const handleSaveAsDraft = async () => {
+        setMode('saving_draft');
+        setError('');
+        try {
+            const contextPrompt = buildContextPrompt(prompt, selectedResumeUrl, bulkEmails);
+            const draftPrompt = `Earlier I asked you to: "${contextPrompt}".\n\nI have reviewed the following email copy:\n\n"""\n${draftResult}\n"""\n\nCRITICAL: Save this to Gmail as a draft using the draft_email tool. Do NOT send the email. ${bulkEmails.trim() ? "Create one Gmail draft per recipient in the mass-send list (call draft_email for each)." : "Use draft_email with the correct to, subject, and body from the approved copy."} Do not ask for confirmation again.`;
+            const data = await agentApi.executeAction(draftPrompt, selectedResumeUrl);
+            setFinalResult(data.result || 'Draft saved to Gmail.');
+            setMode('done');
+        } catch (err) {
+            console.error(err);
+            setError(err.response?.data?.detail || 'Failed to save draft.');
+            setMode('review');
+        }
+    };
+
+    const handleDiscard = () => {
         setMode('idle');
         setDraftResult('');
         setFinalResult('');
@@ -344,31 +360,44 @@ export function AgentChatBox({ history }) {
                                 value={draftResult}
                                 onChange={(e) => setDraftResult(e.target.value)}
                             />
-                            <p className="mt-3 text-sm text-gray-500">Tweak the copy, then send when ready.</p>
+                            <p className="mt-3 text-sm text-gray-500">Tweak the copy, then save as draft, send, or discard.</p>
                         </div>
                         <div className="flex flex-col gap-3 sm:flex-row">
                             <button
                                 type="button"
-                                onClick={handleCancel}
+                                onClick={handleDiscard}
                                 className="flex-1 rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-semibold text-gray-300 hover:bg-white/10"
                             >
-                                Cancel
+                                Discard
                             </button>
                             <button
                                 type="button"
-                                onClick={handleExecute}
-                                className="flex flex-[2] items-center justify-center rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-6 py-3.5 text-sm font-semibold text-white shadow-[0_0_24px_-6px_rgba(16,185,129,0.5)]"
+                                onClick={handleSaveAsDraft}
+                                className="flex-1 rounded-xl border border-amber-400/30 bg-amber-500/15 px-6 py-3.5 text-sm font-semibold text-amber-100 hover:bg-amber-500/25"
                             >
-                                Send email
+                                Save as draft
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                className="flex flex-[1.4] items-center justify-center rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-6 py-3.5 text-sm font-semibold text-white shadow-[0_0_24px_-6px_rgba(16,185,129,0.5)]"
+                            >
+                                Send
                             </button>
                         </div>
                     </div>
                 )}
 
-                {mode === 'executing' && (
+                {(mode === 'executing' || mode === 'saving_draft') && (
                     <div className="flex flex-col items-center justify-center px-6 py-24">
-                        <div className="mb-7 h-12 w-12 animate-spin rounded-full border-2 border-emerald-500/20 border-t-emerald-400" />
-                        <p className="text-lg font-medium text-emerald-200">Sending…</p>
+                        <div className={`mb-7 h-12 w-12 animate-spin rounded-full border-2 ${
+                            mode === 'saving_draft'
+                                ? 'border-amber-500/20 border-t-amber-400'
+                                : 'border-emerald-500/20 border-t-emerald-400'
+                        }`} />
+                        <p className={`text-lg font-medium ${mode === 'saving_draft' ? 'text-amber-200' : 'text-emerald-200'}`}>
+                            {mode === 'saving_draft' ? 'Saving draft…' : 'Sending…'}
+                        </p>
                     </div>
                 )}
 
@@ -385,7 +414,7 @@ export function AgentChatBox({ history }) {
                         </div>
                         <button
                             type="button"
-                            onClick={handleCancel}
+                            onClick={handleDiscard}
                             className="w-full rounded-xl border border-white/10 bg-white/5 px-6 py-3.5 text-sm font-semibold text-gray-300 hover:bg-white/10"
                         >
                             Ask again

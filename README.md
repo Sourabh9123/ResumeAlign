@@ -4,21 +4,22 @@ An AI-powered platform to optimize your resume against job descriptions using La
 
 ## Features
 
-- **JWT Authentication**: Secure user login and management.
+- **JWT Authentication**: Secure login, registration, and a simple forgot-password flow (set a new password by email; no reset email is sent).
 - **Resume Parsing**: Extract and structure data from raw text/PDF using AI and OCR.
 - **JD Analysis**: Extract keywords and requirements from job descriptions to maximize ATS scores.
 - **Manual Job Description Input**: Paste the target job description text for tailoring. The job description link field is currently shown as **Coming Soon** in the frontend and is intentionally disabled.
 - **Custom AI Instructions Pipeline**: Allows users to explicitly guide the AI's tone, focus, and structural rewrites securely without prompt injection risks.
 - **AI Optimization**: Matches and optimizes the resume specifically for the JD using LLMs (OpenAI, Anthropic, Gemini) via a resilient LangGraph workflow.
 - **CV Library**: Saves generated resumes with the job description link/text, ATS score, creation time, search, JD filtering, and timespan filtering.
-- **Agentic AI Workspace**: A dedicated chat-based workspace where an autonomous LLM agent (powered by LangChain) uses custom MCP tools to manage jobs, write drafts, and automate cold outreach.
-- **Google Workspace Integration**: Connect securely via Google OAuth to allow the AI Agent to seamlessly read/write Google Docs and draft/send emails via the Gmail API directly from the dashboard.
-- **Email Outreach Tracking**: An automated CRM-style dashboard that logs all cold emails sent by the agent, fetches active threads/replies via the Gmail API, and allows for one-click, AI-refined follow-ups to recruiters.
+- **AI Agent**: Outreach-focused agent for cold emails (draft → review → send), plus quick calendar/inbox checks via LangChain + MCP Google Workspace tools.
+- **Manage Docs**: Dedicated UI to list, open, edit, and save Google Docs, with AI rewrite presets and free-form instructions.
+- **Google Workspace Integration**: Connect via Google OAuth (Gmail, Calendar, Drive, Docs). Sidebar shows a live token countdown (~1 hour) and highlights refresh when the token is expiring or expired.
+- **Email Outreach Tracking**: CRM-style dashboard that logs agent-sent cold emails, fetches thread replies via Gmail, and supports AI-refined follow-ups.
 - **Private S3 Resume Storage**: Uploads generated PDFs to a private S3 bucket using short object keys and stores only durable object metadata in Postgres.
 - **Lazy Presigned Downloads**: List/history APIs return short app links only. A fresh S3 presigned URL is generated only when a user clicks one specific resume.
 - **Redis Rate Limiting**: Protects auth, general API, and LLM/PDF generation endpoints with separate Redis-backed limits.
 - **Redis LLM Cache**: Caches repeated JSON LLM calls for resume parsing, JD analysis, and resume optimization to reduce repeated provider usage.
-- **Premium Full-Screen UI**: An edge-to-edge, responsive React dashboard with asynchronous loading states and saved-resume history.
+- **Premium Full-Screen UI**: Edge-to-edge React dashboard with tabs for Resume Optimizer, CV Library, AI Agent, Manage Docs, and Email Outreach.
 - **Advanced LaTeX PDF Generation**: Outputs a pixel-perfect, ATS-friendly PDF, dynamically generating bullet points (`\begin{itemize}`) for clarity and cleanly formatted interactive hyperlinks.
 - **Dockerized Architecture**: Easy setup and deployment with centralized `.env` management.
 
@@ -35,12 +36,35 @@ Generated PDF flow:
 4. The frontend history view receives only short app links like `/api/v1/resume/d/<token>`.
 5. When the user clicks one resume, the backend creates one fresh presigned URL for that object and redirects the browser.
 
-Agent Workflow:
-1. The user connects their Google Account in the frontend, storing the `access_token` securely.
-2. The user chats with the AI Agent in the Agent Workspace.
-3. The backend executes a React/LangChain agent loop, spawning a local FastMCP server as a subprocess.
-4. The FastMCP server dynamically receives the user's `access_token` and `USER_ID` via environment variables.
-5. The agent calls tools (e.g., `send_email`, `read_google_doc`) securely on behalf of the user, logging interactions automatically to the PostgreSQL database for the Email Tracker.
+### Dashboard tabs
+
+| Tab | Purpose |
+|-----|---------|
+| **Resume Optimizer** | Upload resume + JD → LangGraph optimize → PDF |
+| **CV Library** | Browse, filter, and download saved optimized CVs |
+| **AI Agent** | Cold email outreach + calendar/inbox (emails require draft review before send) |
+| **Manage Docs** | Browse/edit Google Docs and rewrite with AI, then save back |
+| **Email Outreach** | Track sent pitches, read replies, AI follow-ups |
+
+### Google / Agent workflow
+
+1. The user connects Google in the sidebar. The backend stores the access token and `expires_at` (typically ~1 hour).
+2. The UI shows remaining token time and prompts refresh when expiring/expired.
+3. **AI Agent**: LangChain ReAct loop spawns a local FastMCP Google Workspace server with the user's token + `USER_ID`.
+4. Cold emails are drafted for review first; calendar/inbox queries run immediately. Sent emails are logged for Email Outreach.
+5. **Manage Docs**: REST endpoints call Drive/Docs APIs directly (list/read/update/create + AI rewrite) using the same OAuth token.
+
+### Google Cloud Console setup
+
+Enable **Google Docs API** and **Google Drive API** (plus Gmail/Calendar if using those features). OAuth scopes used by the app include:
+
+- `https://www.googleapis.com/auth/gmail.compose`
+- `https://www.googleapis.com/auth/gmail.readonly`
+- `https://www.googleapis.com/auth/calendar`
+- `https://www.googleapis.com/auth/drive`
+- `https://www.googleapis.com/auth/documents`
+
+Set `VITE_GOOGLE_CLIENT_ID` to your OAuth Web client ID. After changing scopes, users must reconnect (Refresh connection).
 
 ## Tech Stack
 
@@ -255,18 +279,35 @@ cd frontend && npm run build
 
 ### Key API Routes
 
+**Auth**
 - `POST /api/v1/auth/register`: create an account.
 - `POST /api/v1/auth/login`: login and receive an access token.
+- `POST /api/v1/auth/forgot-password`: set a new password by email (no token/email delivery).
 - `GET /api/v1/auth/me`: return the current authenticated user.
+
+**Resume**
 - `POST /api/v1/resume/extract`: upload a resume file and extract text.
 - `POST /api/v1/resume/optimize`: optimize extracted resume text against pasted JD text and optional custom instructions.
 - `GET /api/v1/resume/history`: list saved optimized resumes.
 - `GET /api/v1/resume/d/{download_token}`: open a generated resume download link.
-- `POST /api/v1/agent/execute`: Execute a chat message through the LangChain AI Agent.
-- `GET /api/v1/emails`: List all cold emails sent by the AI Agent.
-- `GET /api/v1/emails/{thread_id}/replies`: Fetch the thread context and replies from Gmail API.
-- `POST /api/v1/emails/{thread_id}/reply`: Reply to an email thread directly, optionally using AI to refine the draft.
-- `POST /api/v1/emails/suggest_reply`: Automatically generate a suggested response based on thread context.
+
+**AI Agent / Google OAuth**
+- `POST /api/v1/agent/oauth`: save Google OAuth credentials (`access_token`, optional `refresh_token`, `expires_in`).
+- `GET /api/v1/agent/oauth/status`: connection status plus `expires_at`, `seconds_remaining`, and `token_status` (`ok` / `expiring` / `expired`).
+- `POST /api/v1/agent/execute`: run a LangChain AI Agent action via MCP tools.
+
+**Manage Docs**
+- `GET /api/v1/docs/`: list Google Docs (optional name query).
+- `GET /api/v1/docs/{doc_id}`: read Doc plain text.
+- `PUT /api/v1/docs/{doc_id}`: replace or append Doc content.
+- `POST /api/v1/docs/`: create a new Google Doc.
+- `POST /api/v1/docs/ai/rewrite`: rewrite Doc text with AI given an instruction.
+
+**Email Outreach**
+- `GET /api/v1/emails`: list cold emails sent by the AI Agent.
+- `GET /api/v1/emails/{thread_id}/replies`: fetch thread replies from Gmail.
+- `POST /api/v1/emails/{thread_id}/reply`: reply on a thread (optional AI refine).
+- `POST /api/v1/emails/suggest_reply`: suggest a reply from thread context.
 
 ### Current Product Notes
 
@@ -274,6 +315,8 @@ cd frontend && npm run build
 - To tailor a resume today, paste the full job description into the **Job Description** textarea.
 - Resume history can still display saved JD source URLs from older data if they exist.
 - Generated PDFs are served either from local paths or private S3 objects depending on environment and storage configuration.
+- Google access tokens last about one hour; reconnect via **Refresh connection** when the sidebar countdown expires.
+- Forgot password updates the password immediately for a matching account email; wire real email delivery later if you need out-of-band verification.
 
 ## CI/CD Pipeline
 

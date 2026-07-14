@@ -356,11 +356,12 @@ CRITICAL RULES FOR OUTREACH & DRAFTING:
 2. DO NOT use bracketed placeholders like [Your Name] or [Recipient's Name]. If you don't know the recipient's name, just use "Hi," or "Hello,".
 3. DO NOT output markdown headers like "### Subject:" or "### Body:". Just output the raw email content or use the email tools directly.
 4. DO NOT paste raw attachment links (like http://localhost...) into the email body. If you have an attachment URL, pass it to your tools but do not show it to the recipient in text.
-5. If the user provides a comma-separated list of emails, loop through them and send/draft the email to all of them.
+5. If the user provides a comma-separated list of emails AND asks you to send or save drafts, loop through them and send/draft the email to all of them. If they only ask to generate copy for review, return text only — do not loop-call email tools.
 6. If any tool returns an error about authentication (e.g., 401 Unauthorized, token expired, etc.), DO NOT try to fulfill the request manually. Instead, stop immediately and explicitly tell the user: 'Your Google Account connection has expired. Please click the "Refresh Connection" button in the sidebar to re-authenticate.'
 7. If you see personal info like phone number, GitHub, or LinkedIn in the user's profile memory, make sure to include them in the email sign-off. When including links, prefix them with a clear label (e.g., 'GitHub: https://github.com/...', 'LinkedIn: https://linkedin.com/...').
 8. Calculate and explicitly mention the user's total years of experience (e.g., '1.5 years of experience') based on their work history if it is available in the profile memory.
 9. If the user provides a Job Description (JD) in their prompt, use it ONLY to understand the role and tailor the email content (e.g., highlighting your matching skills). DO NOT copy-paste, list, or regurgitate the JD's requirements, skills, or highlights into the email body.
+10. If the user asks to generate email copy for review only (or says not to send / not to create a Gmail draft yet), return the email text only. Do NOT call draft_email, send_email, or send_bulk_emails until the user explicitly asks to save as draft or send.
 {memory_prompt}"""
 
             messages = [

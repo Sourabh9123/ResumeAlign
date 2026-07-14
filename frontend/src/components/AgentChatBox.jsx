@@ -124,13 +124,13 @@ export function AgentChatBox({ history }) {
         setFinalResult('');
         try {
             const contextPrompt = buildContextPrompt(prompt, selectedResumeUrl, bulkEmails);
-            const safePrompt = `${contextPrompt}\n\nCRITICAL INSTRUCTION: You are drafting a cold outreach email. Do NOT send the email yet. Draft the exact subject, body, and recipient(s) for review. You MAY use read-only tools if needed. DO NOT use bracketed placeholders like [Your Name]; use profile memory or a natural sign-off.`;
+            const safePrompt = `${contextPrompt}\n\nCRITICAL INSTRUCTION: Generate ONLY the cold outreach email text for on-screen review (To, Subject, Body). Do NOT send the email. Do NOT create a Gmail draft. Do NOT call draft_email, send_email, or send_bulk_emails. You MAY use read-only tools if needed. Return the full email copy as plain text. DO NOT use bracketed placeholders like [Your Name]; use profile memory or a natural sign-off.`;
             const data = await agentApi.executeAction(safePrompt, selectedResumeUrl);
             setDraftResult(data.result || 'No draft generated.');
             setMode('review');
         } catch (err) {
             console.error(err);
-            setError(err.response?.data?.detail || 'Failed to draft email.');
+            setError(err.response?.data?.detail || 'Failed to generate email.');
             setMode('idle');
         }
     };
@@ -267,7 +267,7 @@ export function AgentChatBox({ history }) {
                                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_30px_-8px_rgba(168,85,247,0.7)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
                                 >
                                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                    {needsReview ? 'Draft email' : 'Ask agent'}
+                                    {needsReview ? 'Generate with AI' : 'Ask agent'}
                                 </button>
                             </div>
                         </div>
@@ -324,7 +324,7 @@ export function AgentChatBox({ history }) {
 
                         <p className="text-center text-xs text-gray-600">
                             {needsReview
-                                ? 'Cold emails are drafted first — you approve before anything is sent.'
+                                ? 'Generate first — then save as draft, send, or discard.'
                                 : 'Calendar and inbox questions run right away.'}
                         </p>
                     </div>
@@ -340,7 +340,7 @@ export function AgentChatBox({ history }) {
                             </div>
                         </div>
                         <p className="text-lg font-medium text-violet-100">
-                            {mode === 'drafting' ? 'Drafting your email…' : 'Thinking…'}
+                            {mode === 'drafting' ? 'Generating with AI…' : 'Thinking…'}
                         </p>
                         <p className="mt-2 text-sm text-gray-500">Connecting to your Google Workspace</p>
                     </div>
@@ -360,7 +360,7 @@ export function AgentChatBox({ history }) {
                                 value={draftResult}
                                 onChange={(e) => setDraftResult(e.target.value)}
                             />
-                            <p className="mt-3 text-sm text-gray-500">Tweak the copy, then save as draft, send, or discard.</p>
+                            <p className="mt-3 text-sm text-gray-500">Tweak the copy, then save as draft, send, or discard. Nothing is saved to Gmail until you choose.</p>
                         </div>
                         <div className="flex flex-col gap-3 sm:flex-row">
                             <button
